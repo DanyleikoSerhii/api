@@ -1,3 +1,6 @@
 {
-  "installCommand": "npx --yes pnpm@11.5.2 install --frozen-lockfile"
+  "framework": null,
+  "installCommand": "npx --yes pnpm@11.5.2 install --frozen-lockfile",
+  "buildCommand": "tsc",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }
