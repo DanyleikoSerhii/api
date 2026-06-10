@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# test coverage
+coverage/
+
+# logs
+*.log
+logs/
+
+# seeds (keep placeholder)
+seeds/
+!seeds/.gitkeep
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
