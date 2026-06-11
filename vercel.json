@@ -1,6 +1,5 @@
 {
   "framework": null,
-  "build": { "env": { "ENABLE_EXPERIMENTAL_COREPACK": "1" } },
   "installCommand": "npx --yes pnpm@11.5.2 install --frozen-lockfile",
   "buildCommand": "tsc && mkdir -p public && printf 'API is running. Docs: /api/docs' > public/index.html",
   "outputDirectory": "public",
