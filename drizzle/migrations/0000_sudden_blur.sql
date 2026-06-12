@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
---> statement-breakpoint
 CREATE TABLE "favorites" (
 	"user_id" integer NOT NULL,
 	"title_id" integer NOT NULL,
