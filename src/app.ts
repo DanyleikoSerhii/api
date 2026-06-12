@@ -48,7 +48,11 @@ export function createApp() {
 
   app.onError((err, c) => {
     console.error(err);
-    return errorResponse(c, ErrorCode.INTERNAL_ERROR, 'An unexpected error occurred');
+    return errorResponse(
+      c,
+      ErrorCode.INTERNAL_ERROR,
+      err instanceof Error ? `${err.name}: ${err.message}` : 'An unexpected error occurred',
+    );
   });
 
   return app;
