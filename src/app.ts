@@ -51,7 +51,9 @@ export function createApp() {
     return errorResponse(
       c,
       ErrorCode.INTERNAL_ERROR,
-      err instanceof Error ? `${err.name}: ${err.message}` : 'An unexpected error occurred',
+      err instanceof Error
+        ? `${err.message} || CAUSE: ${err.cause instanceof Error ? `${err.cause.name}: ${err.cause.message}` : String(err.cause)}`
+        : 'An unexpected error occurred',
     );
   });
 
