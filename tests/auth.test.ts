@@ -3,6 +3,7 @@ import { truncateAll } from './helpers/db.js';
 import { request } from './helpers/request.js';
 import { hashPassword, verifyPassword } from '../src/lib/password.js';
 import { signToken, verifyToken } from '../src/lib/jwt.js';
+import { sign } from 'hono/jwt';
 
 beforeEach(async () => {
   await truncateAll();
@@ -122,6 +123,44 @@ describe('GET /api/auth/me', () => {
   it('returns 401 with invalid token', async () => {
     const { status } = await request('/api/auth/me', {
       headers: { Authorization: 'Bearer invalid.token.here' },
+    });
+    expect(status).toBe(401);
+  });
+
+  it('returns 401 when Authorization scheme is not Bearer', async () => {
+    const { status } = await request('/api/auth/me', {
+      headers: { Authorization: token },
+    });
+    expect(status).toBe(401);
+  });
+
+  it('returns 401 with an empty Bearer token', async () => {
+    const { status } = await request('/api/auth/me', {
+      headers: { Authorization: 'Bearer ' },
+    });
+    expect(status).toBe(401);
+  });
+
+  it('returns 401 for a token signed with a different secret', async () => {
+    const forged = await signToken(
+      1,
+      'me@example.com',
+      'a-different-secret-at-least-32-chars-long',
+    );
+    const { status } = await request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${forged}` },
+    });
+    expect(status).toBe(401);
+  });
+
+  it('returns 401 for an expired token', async () => {
+    // hono/jwt rejects tokens whose exp is in the past.
+    const expired = await sign(
+      { sub: 1, email: 'me@example.com', exp: 1 },
+      process.env.JWT_SECRET!,
+    );
+    const { status } = await request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${expired}` },
     });
     expect(status).toBe(401);
   });

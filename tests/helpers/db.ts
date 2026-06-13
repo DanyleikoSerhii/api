@@ -26,6 +26,11 @@ export async function setup() {
   const pool = new Pool({ connectionString: TEST_DB_URL });
   const db = drizzle(pool, { schema });
 
+  // The pg_trgm extension backs the gin_trgm_ops index in the migration.
+  // CREATE EXTENSION was dropped from the migration for Nile compatibility,
+  // so enable it here for the local test database before migrating.
+  await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+
   await migrate(db, { migrationsFolder: './drizzle/migrations' });
   await seedTestData(db);
 
