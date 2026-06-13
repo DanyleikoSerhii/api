@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/seed/run.ts",
+    "db:enrich": "tsx src/enrich/run.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",

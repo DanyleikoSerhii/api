@@ -11,7 +11,7 @@ async function registerAndGetToken(email = 'favuser@example.com'): Promise<strin
 }
 
 async function getFirstTitleId(): Promise<number> {
-  const { body } = await request('/api/titles?limit=1');
+  const { body } = await request('/api/movies?limit=1');
   return ((body as Record<string, unknown>).data as Record<string, unknown>[])[0].id as number;
 }
 
@@ -142,7 +142,7 @@ describe('POST /api/favorites/check', () => {
 
   it('returns correct isFavorite map', async () => {
     const token = await registerAndGetToken();
-    const { body: list } = await request('/api/titles?limit=2');
+    const { body: list } = await request('/api/movies?limit=2');
     const ids = ((list as Record<string, unknown>).data as Record<string, unknown>[]).map(
       (t) => t.id as number,
     );
@@ -189,7 +189,7 @@ describe('isFavorite integration', () => {
     const titleId = await getFirstTitleId();
 
     // Before adding — false
-    const { body: before } = await request(`/api/titles/${titleId}`, {
+    const { body: before } = await request(`/api/movies/${titleId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect((before as Record<string, unknown>).isFavorite).toBe(false);
@@ -201,7 +201,7 @@ describe('isFavorite integration', () => {
     });
 
     // After adding — true
-    const { body: after } = await request(`/api/titles/${titleId}`, {
+    const { body: after } = await request(`/api/movies/${titleId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect((after as Record<string, unknown>).isFavorite).toBe(true);
@@ -213,7 +213,7 @@ describe('isFavorite integration', () => {
     });
 
     // After removing — false
-    const { body: final } = await request(`/api/titles/${titleId}`, {
+    const { body: final } = await request(`/api/movies/${titleId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect((final as Record<string, unknown>).isFavorite).toBe(false);

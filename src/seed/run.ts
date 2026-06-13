@@ -1,11 +1,9 @@
-import { config } from 'dotenv';
-config();
-
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { titles, genres, titleGenres, people, titleCast } from '../db/schema.js';
+import { env } from '../env.js';
 
 const MIN_RATING = 7.5;
 const MIN_VOTES = 50_000;
@@ -51,7 +49,7 @@ async function streamLines(filePath: string, onLine: (cols: string[]) => void): 
 }
 
 async function main() {
-  const pool = new Pool({ connectionString: process.env['DATABASE_URL']! });
+  const pool = new Pool({ connectionString: env.DATABASE_URL });
   const db = drizzle(pool);
 
   // Pass 1: qualifying set by rating

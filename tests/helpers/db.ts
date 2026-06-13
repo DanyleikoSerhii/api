@@ -135,6 +135,8 @@ async function seedTestData(db: ReturnType<typeof drizzle<typeof schema>>) {
         seasonsCount: 5,
         episodesCount: 62,
         posterUrl: 'https://placehold.co/300x450?text=BreakingBad',
+        backdropUrl: 'https://image.tmdb.org/t/p/w1280/bb.jpg',
+        trailerKey: 'HhesaQXLuRY',
       },
       {
         imdbId: 'tt0000007',

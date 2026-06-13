@@ -6,12 +6,12 @@ describe('GET /api/people/:id', () => {
   it('returns person detail with filmography', async () => {
     await truncateAll();
 
-    const listRes = await request('/api/titles?q=Breaking Bad&limit=1');
+    const listRes = await request('/api/movies?q=Breaking Bad&limit=1');
     const titleData = (listRes.body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(titleData.length).toBeGreaterThan(0);
     const breakingBadId = titleData[0]?.['id'] as number;
 
-    const detailRes = await request(`/api/titles/${breakingBadId}`);
+    const detailRes = await request(`/api/movies/${breakingBadId}`);
     const cast = (detailRes.body as Record<string, unknown>).cast as Record<string, unknown>[];
     expect(cast.length).toBeGreaterThan(0);
     const personId = cast[0]?.['id'] as number;

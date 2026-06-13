@@ -8,7 +8,14 @@ const schema = z.object({
   DATABASE_URL_TEST: z.string().min(1).optional(),
   JWT_SECRET: z.string().min(32),
   PORT: z.coerce.number().default(3000),
-  ALLOWED_ORIGIN: z.string().min(1).default('http://localhost:5173'),
+  ALLOWED_ORIGIN: z.string().min(1).default('http://localhost:3000'),
+  // Only required to run `pnpm db:enrich`; the app and tests run without it.
+  TMDB_ACCESS_TOKEN: z.string().optional(),
 });
 
-export const env = schema.parse(process.env);
+// Nile / Vercel Postgres expose the connection string as POSTGRES_URL.
+// Accept it as a fallback so the same code works locally and in deployment.
+export const env = schema.parse({
+  ...process.env,
+  DATABASE_URL: process.env['DATABASE_URL'] ?? process.env['POSTGRES_URL'],
+});
