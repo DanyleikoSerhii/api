@@ -2,7 +2,7 @@ import { z } from '@hono/zod-openapi';
 
 export const Tags = {
   AUTH: 'Auth',
-  TITLES: 'Titles',
+  MOVIES: 'Movies',
   GENRES: 'Genres',
   FAVORITES: 'Favorites',
 } as const;
@@ -52,6 +52,54 @@ export const credentialsSchema = z
     }),
   })
   .openapi('Credentials');
+
+// Base64 data-URI for the avatar. Capped well under the 1 MB request-body limit
+// (~700k chars of base64 ≈ a ~0.5 MB image).
+const avatarSchema = z
+  .string()
+  .max(700_000)
+  .regex(
+    /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/]+=*$/,
+    'Must be a base64 image data URI (data:image/...;base64,...).',
+  )
+  .openapi({ description: 'Base64 image data URI. Send null to clear.' });
+
+const nicknameSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(50)
+  .regex(/^[a-zA-Z0-9_.-]+$/, 'Only letters, digits, and _ . - are allowed.')
+  .openapi({ example: 'cinephile_42' });
+
+export const profileSchema = z
+  .object({
+    id: z.number().int().openapi({ example: 1 }),
+    email: z.string().email().openapi({ example: 'user@example.com' }),
+    nickname: z.string().nullable().openapi({ example: 'cinephile_42' }),
+    firstName: z.string().nullable().openapi({ example: 'Ada' }),
+    lastName: z.string().nullable().openapi({ example: 'Lovelace' }),
+    avatar: z.string().nullable().openapi({ example: null }),
+  })
+  .openapi('Profile');
+
+// PATCH body: every field optional; an explicit null clears that field.
+export const updateProfileSchema = z
+  .object({
+    nickname: nicknameSchema.nullable(),
+    firstName: z.string().trim().min(1).max(100).nullable(),
+    lastName: z.string().trim().min(1).max(100).nullable(),
+    avatar: avatarSchema.nullable(),
+  })
+  .partial()
+  .openapi('UpdateProfile');
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8).max(72).openapi({ example: 'secret12345' }),
+    newPassword: z.string().min(8).max(72).openapi({ example: 'newSecret67890' }),
+  })
+  .openapi('ChangePassword');
 
 export const paginationSchema = z
   .object({
@@ -120,13 +168,19 @@ export const titleDetailSchema = z
       .openapi({ example: 2013, description: 'null for movies and ongoing series.' }),
     director: z.string().nullable().openapi({ example: 'Vince Gilligan' }),
     description: z.string().nullable().openapi({
-      example: null,
-      description:
-        'Always null; IMDb Non-Commercial dumps have no plot. Reserved for future TMDB enrichment.',
+      description: 'Plot/overview. null until enriched from TMDB (IMDb dumps have no plot).',
     }),
     rating: z.number().openapi({ example: 9.5 }),
     numVotes: z.number().int().openapi({ example: 2000000, description: 'IMDb numVotes.' }),
     posterUrl: z.string().nullable(),
+    backdropUrl: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Wide backdrop image (TMDB). null if unknown.' }),
+    trailerUrl: z.string().nullable().openapi({
+      example: 'https://www.youtube.com/watch?v=HhesaQXLuRY',
+      description: 'YouTube trailer URL (TMDB). null if none.',
+    }),
     genres: z.array(z.string()).openapi({ example: ['Crime', 'Drama', 'Thriller'] }),
     seasonsCount: z
       .number()

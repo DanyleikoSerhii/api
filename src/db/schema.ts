@@ -9,16 +9,28 @@ import {
   timestamp,
   primaryKey,
   index,
+  uniqueIndex,
   check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: serial('id').primaryKey(),
+    email: varchar('email', { length: 255 }).notNull().unique(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    nickname: varchar('nickname', { length: 50 }),
+    firstName: varchar('first_name', { length: 100 }),
+    lastName: varchar('last_name', { length: 100 }),
+    avatar: text('avatar'),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (t) => [
+    // Case-insensitive uniqueness; multiple NULL nicknames are allowed.
+    uniqueIndex('users_nickname_lower_idx').on(sql`lower(${t.nickname})`),
+  ],
+);
 
 export const titles = pgTable(
   'titles',
@@ -36,6 +48,9 @@ export const titles = pgTable(
     seasonsCount: smallint('seasons_count'),
     episodesCount: integer('episodes_count'),
     posterUrl: varchar('poster_url', { length: 1000 }),
+    backdropUrl: varchar('backdrop_url', { length: 1000 }),
+    tmdbId: integer('tmdb_id'),
+    trailerKey: varchar('trailer_key', { length: 20 }),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (t) => [

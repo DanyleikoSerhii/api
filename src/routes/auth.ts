@@ -1,5 +1,5 @@
-import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
-import { eq } from 'drizzle-orm';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { hashPassword, verifyPassword, dummyVerifyPassword } from '../lib/password.js';
@@ -12,7 +12,9 @@ import {
   Tags,
   credentialsSchema,
   authResponseSchema,
-  userSchema,
+  profileSchema,
+  updateProfileSchema,
+  changePasswordSchema,
   errorResponseSchema,
 } from '../openapi/schemas.js';
 
@@ -21,6 +23,20 @@ type AuthVariables = {
 };
 
 const jsonError = { content: { 'application/json': { schema: errorResponseSchema } } };
+
+const messageSchema = z.object({ message: z.string().openapi({ example: 'Password updated' }) });
+
+type UserRow = typeof users.$inferSelect;
+function toProfile(u: UserRow) {
+  return {
+    id: u.id,
+    email: u.email,
+    nickname: u.nickname,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    avatar: u.avatar,
+  };
+}
 
 const registerRoute = createRoute({
   method: 'post',
@@ -68,11 +84,54 @@ const meRoute = createRoute({
   path: '/api/auth/me',
   tags: [Tags.AUTH],
   summary: 'Get current user',
-  description: "Returns the authenticated user's id and email.",
+  description: "Returns the authenticated user's profile (id, email, nickname, names, avatar).",
   security: [{ BearerAuth: [] }],
   responses: {
-    200: { content: { 'application/json': { schema: userSchema } }, description: 'Current user' },
+    200: { content: { 'application/json': { schema: profileSchema } }, description: 'Current user' },
     401: { ...jsonError, description: 'Missing or invalid token' },
+  },
+});
+
+const updateProfileRoute = createRoute({
+  method: 'patch',
+  path: '/api/auth/me',
+  tags: [Tags.AUTH],
+  summary: 'Update the current profile',
+  description:
+    'Partial update of nickname, first/last name, and avatar. Omit a field to leave it unchanged; send null to clear it. Nickname is unique (case-insensitive).',
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: { content: { 'application/json': { schema: updateProfileSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: profileSchema } },
+      description: 'Updated profile',
+    },
+    400: { ...jsonError, description: 'Validation error' },
+    401: { ...jsonError, description: 'Missing or invalid token' },
+    409: { ...jsonError, description: 'Nickname already taken' },
+  },
+});
+
+const changePasswordRoute = createRoute({
+  method: 'post',
+  path: '/api/auth/change-password',
+  tags: [Tags.AUTH],
+  summary: 'Change password',
+  description:
+    'Verifies the current password and sets a new one. Existing tokens remain valid (no revocation).',
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: { content: { 'application/json': { schema: changePasswordSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: messageSchema } },
+      description: 'Password changed',
+    },
+    400: { ...jsonError, description: 'Validation error' },
+    401: { ...jsonError, description: 'Missing token or wrong current password' },
   },
 });
 
@@ -123,7 +182,82 @@ authRouter.openapi(loginRoute, async (c) => {
 });
 
 authRouter.use('/api/auth/me', requireAuth);
-authRouter.openapi(meRoute, (c) => {
-  const user = c.get('user');
-  return c.json({ id: user.sub, email: user.email }, 200);
+authRouter.use('/api/auth/change-password', requireAuth);
+
+authRouter.openapi(meRoute, async (c) => {
+  const auth = c.get('user');
+  const [u] = await db.select().from(users).where(eq(users.id, auth.sub)).limit(1);
+  if (!u) {
+    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'User not found') as never;
+  }
+  return c.json(toProfile(u), 200);
+});
+
+authRouter.openapi(updateProfileRoute, async (c) => {
+  const auth = c.get('user');
+  const body = c.req.valid('json');
+
+  const updates: Partial<Pick<UserRow, 'nickname' | 'firstName' | 'lastName' | 'avatar'>> = {};
+  if (body.nickname !== undefined) updates.nickname = body.nickname;
+  if (body.firstName !== undefined) updates.firstName = body.firstName;
+  if (body.lastName !== undefined) updates.lastName = body.lastName;
+  if (body.avatar !== undefined) updates.avatar = body.avatar;
+
+  // Pre-check nickname uniqueness (case-insensitive), excluding the current user.
+  if (updates.nickname != null) {
+    const clash = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(sql`lower(${users.nickname}) = lower(${updates.nickname})`, ne(users.id, auth.sub)),
+      )
+      .limit(1);
+    if (clash.length > 0) {
+      return errorResponse(c, ErrorCode.CONFLICT, 'Nickname already taken') as never;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    const [current] = await db.select().from(users).where(eq(users.id, auth.sub)).limit(1);
+    if (!current) {
+      return errorResponse(c, ErrorCode.UNAUTHORIZED, 'User not found') as never;
+    }
+    return c.json(toProfile(current), 200);
+  }
+
+  try {
+    const [updated] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, auth.sub))
+      .returning();
+    if (!updated) {
+      return errorResponse(c, ErrorCode.UNAUTHORIZED, 'User not found') as never;
+    }
+    return c.json(toProfile(updated), 200);
+  } catch (err) {
+    // Unique-violation race on the nickname index.
+    if (err && typeof err === 'object' && 'code' in err && err.code === '23505') {
+      return errorResponse(c, ErrorCode.CONFLICT, 'Nickname already taken') as never;
+    }
+    throw err;
+  }
+});
+
+authRouter.openapi(changePasswordRoute, async (c) => {
+  const auth = c.get('user');
+  const { currentPassword, newPassword } = c.req.valid('json');
+
+  const [u] = await db.select().from(users).where(eq(users.id, auth.sub)).limit(1);
+  if (!u) {
+    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'User not found') as never;
+  }
+  const valid = await verifyPassword(currentPassword, u.passwordHash);
+  if (!valid) {
+    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'Current password is incorrect') as never;
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash }).where(eq(users.id, auth.sub));
+  return c.json({ message: 'Password updated' }, 200);
 });
