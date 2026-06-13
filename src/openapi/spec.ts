@@ -31,7 +31,7 @@ export function mountOpenAPI(app: OpenAPIHono) {
     servers: [{ url: `http://localhost:${env.PORT}`, description: 'Local development' }],
     tags: [
       { name: Tags.AUTH, description: 'Registration, login, and current-user lookup.' },
-      { name: Tags.TITLES, description: 'Browse and search movies and series.' },
+      { name: Tags.MOVIES, description: 'Browse and search movies and series.' },
       { name: Tags.GENRES, description: 'All available genres.' },
       { name: Tags.FAVORITES, description: "Manage the authenticated user's favorite titles." },
     ],

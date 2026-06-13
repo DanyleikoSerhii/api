@@ -17,6 +17,7 @@ import { titles, titleGenres, genres, titleCast, people, favorites } from '../db
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
 import { escapeLikePattern } from '../lib/sql.js';
 import { optionalAuth } from '../middleware/optionalAuth.js';
+import { trailerWatchUrl } from '../lib/tmdb.js';
 import {
   Tags,
   titleListSchema,
@@ -30,7 +31,7 @@ const jsonError = { content: { 'application/json': { schema: errorResponseSchema
 const MAX_PAGE = 10_000;
 const MAX_LIMIT = 100;
 
-const titlesQuerySchema = z.object({
+const moviesQuerySchema = z.object({
   q: z
     .string()
     .max(100)
@@ -120,12 +121,12 @@ function genreExists(name: string): SQL {
 
 const listRoute = createRoute({
   method: 'get',
-  path: '/api/titles',
-  tags: [Tags.TITLES],
+  path: '/api/movies',
+  tags: [Tags.MOVIES],
   summary: 'List titles',
   description:
     'Paginated catalog of movies and series. Supports text search (ILIKE) and combinable filters by type, year (exact or yearFrom/yearTo range), genre(s), minRating, and minVotes. Sortable by rating, year, numVotes, title, or createdAt in either direction (default rating desc).',
-  request: { query: titlesQuerySchema },
+  request: { query: moviesQuerySchema },
   responses: {
     200: {
       content: { 'application/json': { schema: titleListSchema } },
@@ -137,8 +138,8 @@ const listRoute = createRoute({
 
 const detailRoute = createRoute({
   method: 'get',
-  path: '/api/titles/{id}',
-  tags: [Tags.TITLES],
+  path: '/api/movies/{id}',
+  tags: [Tags.MOVIES],
   summary: 'Get a title by id',
   description:
     "Returns full details including up to 10 cast members. For series, includes `seasonsCount`, `episodesCount`, and `endYear` (null for ongoing). When called with a valid Bearer token, `isFavorite` reflects the caller's state; without a token it is always `false`.",
@@ -157,8 +158,8 @@ const detailRoute = createRoute({
 
 const similarRoute = createRoute({
   method: 'get',
-  path: '/api/titles/{id}/similar',
-  tags: [Tags.TITLES],
+  path: '/api/movies/{id}/similar',
+  tags: [Tags.MOVIES],
   summary: 'List similar titles',
   description:
     'Returns other titles that share at least one genre with the target, ranked by number of shared genres (desc) then IMDb rating (desc). The target title itself is excluded. Returns an empty array if the target has no genres.',
@@ -187,11 +188,11 @@ type OptionalAuthVariables = {
   user: { sub: number; email: string } | null;
 };
 
-export const titlesRouter = new OpenAPIHono<{ Variables: OptionalAuthVariables }>({ defaultHook });
+export const moviesRouter = new OpenAPIHono<{ Variables: OptionalAuthVariables }>({ defaultHook });
 
-titlesRouter.use('/api/titles/:id', optionalAuth);
+moviesRouter.use('/api/movies/:id', optionalAuth);
 
-titlesRouter.openapi(listRoute, async (c) => {
+moviesRouter.openapi(listRoute, async (c) => {
   const {
     q,
     type,
@@ -314,7 +315,7 @@ titlesRouter.openapi(listRoute, async (c) => {
   );
 });
 
-titlesRouter.openapi(detailRoute, async (c) => {
+moviesRouter.openapi(detailRoute, async (c) => {
   const { id } = c.req.valid('param');
 
   const [title] = await db.select().from(titles).where(eq(titles.id, id)).limit(1);
@@ -364,6 +365,8 @@ titlesRouter.openapi(detailRoute, async (c) => {
       rating: Number(title.rating),
       numVotes: title.numVotes,
       posterUrl: title.posterUrl ?? null,
+      backdropUrl: title.backdropUrl ?? null,
+      trailerUrl: trailerWatchUrl(title.trailerKey),
       genres: titleGenreRows.map((g) => g.name),
       seasonsCount: title.seasonsCount ?? null,
       episodesCount: title.episodesCount ?? null,
@@ -374,7 +377,7 @@ titlesRouter.openapi(detailRoute, async (c) => {
   );
 });
 
-titlesRouter.openapi(similarRoute, async (c) => {
+moviesRouter.openapi(similarRoute, async (c) => {
   const { id } = c.req.valid('param');
   const { limit } = c.req.valid('query');
 

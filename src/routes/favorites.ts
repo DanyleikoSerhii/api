@@ -27,7 +27,7 @@ const titleIdParamSchema = z.object({
     .number()
     .int()
     .positive()
-    .openapi({ example: 889, description: 'Title id from /api/titles.' }),
+    .openapi({ example: 889, description: 'Movie id from /api/movies.' }),
 });
 
 const bulkCheckBodySchema = z.object({

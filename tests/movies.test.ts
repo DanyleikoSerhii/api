@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { request } from './helpers/request.js';
 
-describe('GET /api/titles', () => {
+describe('GET /api/movies', () => {
   it('returns paginated list', async () => {
-    const { status, body } = await request('/api/titles');
+    const { status, body } = await request('/api/movies');
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
     expect(Array.isArray(b.data)).toBe(true);
@@ -13,7 +13,7 @@ describe('GET /api/titles', () => {
   });
 
   it('filters by type=movie returns only movies', async () => {
-    const { body } = await request('/api/titles?type=movie');
+    const { body } = await request('/api/movies?type=movie');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.length).toBeGreaterThan(0);
     for (const item of data) {
@@ -22,7 +22,7 @@ describe('GET /api/titles', () => {
   });
 
   it('filters by type=series returns only series', async () => {
-    const { body } = await request('/api/titles?type=series');
+    const { body } = await request('/api/movies?type=series');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.length).toBeGreaterThan(0);
     for (const item of data) {
@@ -31,7 +31,7 @@ describe('GET /api/titles', () => {
   });
 
   it('filters by year', async () => {
-    const { body } = await request('/api/titles?year=1994');
+    const { body } = await request('/api/movies?year=1994');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.length).toBeGreaterThan(0);
     for (const item of data) {
@@ -40,7 +40,7 @@ describe('GET /api/titles', () => {
   });
 
   it('filters by genre', async () => {
-    const { body } = await request('/api/titles?genre=Crime');
+    const { body } = await request('/api/movies?genre=Crime');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.length).toBeGreaterThan(0);
     for (const item of data) {
@@ -49,18 +49,18 @@ describe('GET /api/titles', () => {
   });
 
   it('searches by q', async () => {
-    const { body } = await request('/api/titles?q=Breaking');
+    const { body } = await request('/api/movies?q=Breaking');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.some((t) => (t.title as string).includes('Breaking'))).toBe(true);
   });
 
   it('rejects limit above 100 with 400', async () => {
-    const { status } = await request('/api/titles?limit=500');
+    const { status } = await request('/api/movies?limit=500');
     expect(status).toBe(400);
   });
 
   it('paginates correctly', async () => {
-    const { body } = await request('/api/titles?page=1&limit=2');
+    const { body } = await request('/api/movies?page=1&limit=2');
     const pagination = (body as Record<string, unknown>).pagination as Record<string, number>;
     expect(pagination.page).toBe(1);
     expect(pagination.limit).toBe(2);
@@ -69,14 +69,14 @@ describe('GET /api/titles', () => {
   });
 });
 
-describe('GET /api/titles/:id', () => {
+describe('GET /api/movies/:id', () => {
   it('returns movie detail with null series fields', async () => {
-    const listRes = await request('/api/titles?type=movie&limit=1');
+    const listRes = await request('/api/movies?type=movie&limit=1');
     const movieId = (
       (listRes.body as Record<string, unknown>).data as Record<string, unknown>[]
     )[0]?.['id'] as number;
 
-    const { status, body } = await request(`/api/titles/${movieId}`);
+    const { status, body } = await request(`/api/movies/${movieId}`);
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
     expect(b.type).toBe('movie');
@@ -88,12 +88,12 @@ describe('GET /api/titles/:id', () => {
   });
 
   it('returns series detail with seasons/episodes/cast', async () => {
-    const listRes = await request('/api/titles?type=series&q=Breaking&limit=1');
+    const listRes = await request('/api/movies?type=series&q=Breaking&limit=1');
     const data = (listRes.body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.length).toBeGreaterThan(0);
     const seriesId = data[0]?.['id'] as number;
 
-    const { status, body } = await request(`/api/titles/${seriesId}`);
+    const { status, body } = await request(`/api/movies/${seriesId}`);
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
     expect(b.type).toBe('series');
@@ -105,17 +105,17 @@ describe('GET /api/titles/:id', () => {
   });
 
   it('returns 404 for unknown id', async () => {
-    const { status, body } = await request('/api/titles/999999');
+    const { status, body } = await request('/api/movies/999999');
     expect(status).toBe(404);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('NOT_FOUND');
   });
 
   it('returns isFavorite: false when not authenticated', async () => {
-    const listRes = await request('/api/titles?limit=1');
+    const listRes = await request('/api/movies?limit=1');
     const titleId = (
       (listRes.body as Record<string, unknown>).data as Record<string, unknown>[]
     )[0]?.['id'] as number;
-    const { body } = await request(`/api/titles/${titleId}`);
+    const { body } = await request(`/api/movies/${titleId}`);
     expect((body as Record<string, unknown>).isFavorite).toBe(false);
   });
 });
@@ -123,9 +123,9 @@ describe('GET /api/titles/:id', () => {
 const dataOf = (body: unknown) =>
   (body as Record<string, unknown>).data as Record<string, unknown>[];
 
-describe('GET /api/titles sorting and advanced filters', () => {
+describe('GET /api/movies sorting and advanced filters', () => {
   it('sort=year&order=asc returns ascending years', async () => {
-    const { status, body } = await request('/api/titles?sort=year&order=asc&limit=100');
+    const { status, body } = await request('/api/movies?sort=year&order=asc&limit=100');
     expect(status).toBe(200);
     const years = dataOf(body).map((t) => t.year as number);
     expect(years.length).toBeGreaterThan(1);
@@ -134,7 +134,7 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('sort=numVotes&order=desc orders by votes descending', async () => {
-    const { status, body } = await request('/api/titles?sort=numVotes&order=desc&limit=100');
+    const { status, body } = await request('/api/movies?sort=numVotes&order=desc&limit=100');
     expect(status).toBe(200);
     const votes = dataOf(body).map((t) => t.numVotes as number);
     expect(votes.length).toBeGreaterThan(1);
@@ -143,7 +143,7 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('yearFrom/yearTo filters by range', async () => {
-    const { status, body } = await request('/api/titles?yearFrom=1990&yearTo=2000&limit=100');
+    const { status, body } = await request('/api/movies?yearFrom=1990&yearTo=2000&limit=100');
     expect(status).toBe(200);
     const data = dataOf(body);
     expect(data.length).toBeGreaterThan(0);
@@ -155,7 +155,7 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('minRating only returns titles with rating >= minRating', async () => {
-    const { status, body } = await request('/api/titles?minRating=9.3&limit=100');
+    const { status, body } = await request('/api/movies?minRating=9.3&limit=100');
     expect(status).toBe(200);
     const data = dataOf(body);
     expect(data.length).toBeGreaterThan(0);
@@ -165,7 +165,7 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('minVotes filters by vote count', async () => {
-    const { status, body } = await request('/api/titles?minVotes=2000000&limit=100');
+    const { status, body } = await request('/api/movies?minVotes=2000000&limit=100');
     expect(status).toBe(200);
     const data = dataOf(body);
     expect(data.length).toBeGreaterThan(0);
@@ -176,7 +176,7 @@ describe('GET /api/titles sorting and advanced filters', () => {
 
   it('genres with genreMode=all returns only titles having every listed genre', async () => {
     const { status, body } = await request(
-      '/api/titles?genres=Drama,Crime&genreMode=all&limit=100',
+      '/api/movies?genres=Drama,Crime&genreMode=all&limit=100',
     );
     expect(status).toBe(200);
     const data = dataOf(body);
@@ -189,8 +189,8 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('genres with genreMode=any returns titles having either genre', async () => {
-    const allRes = await request('/api/titles?genres=Drama,Crime&genreMode=all&limit=100');
-    const anyRes = await request('/api/titles?genres=Drama,Crime&genreMode=any&limit=100');
+    const allRes = await request('/api/movies?genres=Drama,Crime&genreMode=all&limit=100');
+    const anyRes = await request('/api/movies?genres=Drama,Crime&genreMode=any&limit=100');
     expect(anyRes.status).toBe(200);
     const anyData = dataOf(anyRes.body);
     expect(anyData.length).toBeGreaterThan(0);
@@ -203,19 +203,19 @@ describe('GET /api/titles sorting and advanced filters', () => {
   });
 
   it('list items include numeric numVotes', async () => {
-    const { body } = await request('/api/titles?limit=1');
+    const { body } = await request('/api/movies?limit=1');
     const item = dataOf(body)[0];
     expect(typeof item.numVotes).toBe('number');
   });
 });
 
-describe('GET /api/titles/:id/similar', () => {
+describe('GET /api/movies/:id/similar', () => {
   it('returns related titles, excludes the title itself, respects limit', async () => {
-    const listRes = await request('/api/titles?q=Shawshank&limit=1');
+    const listRes = await request('/api/movies?q=Shawshank&limit=1');
     const target = dataOf(listRes.body)[0];
     const targetId = target.id as number;
 
-    const { status, body } = await request(`/api/titles/${targetId}/similar?limit=3`);
+    const { status, body } = await request(`/api/movies/${targetId}/similar?limit=3`);
     expect(status).toBe(200);
     const data = dataOf(body);
     expect(data.length).toBeGreaterThan(0);
@@ -230,8 +230,32 @@ describe('GET /api/titles/:id/similar', () => {
   });
 
   it('returns 404 for a non-existent id', async () => {
-    const { status, body } = await request('/api/titles/999999/similar');
+    const { status, body } = await request('/api/movies/999999/similar');
     expect(status).toBe(404);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('GET /api/movies/:id trailer & backdrop', () => {
+  it('derives trailerUrl from the stored trailer key and returns backdropUrl', async () => {
+    // Breaking Bad is seeded with a trailerKey and backdropUrl.
+    const listRes = await request('/api/movies?q=Breaking&type=series&limit=1');
+    const id = dataOf(listRes.body)[0].id as number;
+
+    const { status, body } = await request(`/api/movies/${id}`);
+    expect(status).toBe(200);
+    const b = body as Record<string, unknown>;
+    expect(b.trailerUrl).toBe('https://www.youtube.com/watch?v=HhesaQXLuRY');
+    expect(b.backdropUrl).toBe('https://image.tmdb.org/t/p/w1280/bb.jpg');
+  });
+
+  it('returns null trailerUrl/backdropUrl for a title without enrichment', async () => {
+    const listRes = await request('/api/movies?q=Shawshank&limit=1');
+    const id = dataOf(listRes.body)[0].id as number;
+
+    const { body } = await request(`/api/movies/${id}`);
+    const b = body as Record<string, unknown>;
+    expect(b.trailerUrl).toBeNull();
+    expect(b.backdropUrl).toBeNull();
   });
 });
