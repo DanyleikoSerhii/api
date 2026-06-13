@@ -1,9 +1,10 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { eq, and, desc, inArray, count } from 'drizzle-orm';
+import { eq, and, asc, desc, count, inArray, SQL, type AnyColumn } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { favorites, titles, titleGenres, genres } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
+import { buildPagination, titleSearchCondition } from '../lib/listQuery.js';
 import {
   Tags,
   titleListSchema,
@@ -18,9 +19,29 @@ type AuthVariables = {
 const jsonError = { content: { 'application/json': { schema: errorResponseSchema } } };
 
 const favoritesQuerySchema = z.object({
+  q: z
+    .string()
+    .max(100)
+    .optional()
+    .openapi({ description: 'Search by title, director, or actor.', example: 'Cranston' }),
+  sort: z
+    .enum(['rating', 'year', 'numVotes', 'title', 'addedAt'])
+    .default('addedAt')
+    .openapi({ description: 'Sort column.' }),
+  order: z.enum(['asc', 'desc']).default('desc').openapi({ description: 'Sort direction.' }),
   page: z.coerce.number().int().min(1).max(10_000).default(1).openapi({ example: 1 }),
   limit: z.coerce.number().int().min(1).max(100).default(20).openapi({ example: 20 }),
 });
+
+type FavSortKey = 'rating' | 'year' | 'numVotes' | 'title' | 'addedAt';
+
+const favSortColumns: Record<FavSortKey, AnyColumn> = {
+  rating: titles.rating,
+  year: titles.year,
+  numVotes: titles.numVotes,
+  title: titles.title,
+  addedAt: favorites.addedAt,
+};
 
 const titleIdParamSchema = z.object({
   titleId: z.coerce
@@ -53,7 +74,7 @@ const listRoute = createRoute({
   tags: [Tags.FAVORITES],
   summary: "List the user's favorites",
   description:
-    'Paginated list of titles the authenticated user has favorited, sorted by IMDb rating descending.',
+    'Paginated list of favorited titles. Supports text search (`q` matches title, director, actor) and sorting by rating, year, numVotes, title, or addedAt (default addedAt desc).',
   security: [{ BearerAuth: [] }],
   request: { query: favoritesQuerySchema },
   responses: {
@@ -132,19 +153,28 @@ favoritesRouter.use('/api/favorites/*', requireAuth);
 
 favoritesRouter.openapi(listRoute, async (c) => {
   const user = c.get('user');
-  const { page, limit } = c.req.valid('query');
+  const { q, sort, order, page, limit } = c.req.valid('query');
   const offset = (page - 1) * limit;
+
+  const conditions: SQL[] = [];
+  if (q && q.trim() !== '') {
+    conditions.push(titleSearchCondition(q));
+  }
+
+  const whereClause = and(eq(favorites.userId, user.sub), ...conditions);
 
   const totalRows = await db
     .select({ value: count() })
     .from(favorites)
-    .where(eq(favorites.userId, user.sub));
+    .innerJoin(titles, eq(favorites.titleId, titles.id))
+    .where(whereClause);
   const total = totalRows[0]?.value ?? 0;
 
   if (total === 0) {
-    return c.json({ data: [], pagination: { page, limit, total: 0, totalPages: 0 } }, 200);
+    return c.json({ data: [], pagination: buildPagination(page, limit, 0) }, 200);
   }
 
+  const sortDir = order === 'asc' ? asc : desc;
   const rows = await db
     .select({
       id: titles.id,
@@ -153,12 +183,13 @@ favoritesRouter.openapi(listRoute, async (c) => {
       year: titles.year,
       director: titles.director,
       rating: titles.rating,
+      numVotes: titles.numVotes,
       posterUrl: titles.posterUrl,
     })
     .from(favorites)
     .innerJoin(titles, eq(favorites.titleId, titles.id))
-    .where(eq(favorites.userId, user.sub))
-    .orderBy(desc(titles.rating))
+    .where(whereClause)
+    .orderBy(sortDir(favSortColumns[sort]), desc(favorites.addedAt))
     .limit(limit)
     .offset(offset);
 
@@ -186,17 +217,12 @@ favoritesRouter.openapi(listRoute, async (c) => {
     year: t.year,
     director: t.director ?? null,
     rating: Number(t.rating),
+    numVotes: t.numVotes,
     posterUrl: t.posterUrl ?? null,
     genres: genreMap.get(t.id) ?? [],
   }));
 
-  return c.json(
-    {
-      data,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    },
-    200,
-  );
+  return c.json({ data, pagination: buildPagination(page, limit, Number(total)) }, 200);
 });
 
 favoritesRouter.openapi(checkRoute, async (c) => {

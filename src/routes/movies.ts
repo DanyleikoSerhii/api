@@ -16,6 +16,7 @@ import { db } from '../db/connection.js';
 import { titles, titleGenres, genres, titleCast, people, favorites } from '../db/schema.js';
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
 import { escapeLikePattern } from '../lib/sql.js';
+import { buildPagination, titleSearchCondition } from '../lib/listQuery.js';
 import { optionalAuth } from '../middleware/optionalAuth.js';
 import { trailerWatchUrl } from '../lib/tmdb.js';
 import {
@@ -36,7 +37,7 @@ const moviesQuerySchema = z.object({
     .string()
     .max(100)
     .optional()
-    .openapi({ description: 'Search by title (ILIKE %q%). Max 100 chars.', example: 'matrix' }),
+    .openapi({ description: 'Search by title, director, or actor (ILIKE %q%). Max 100 chars.', example: 'Cranston' }),
   type: z.enum(['movie', 'series']).optional().openapi({ description: 'Filter by title type.' }),
   year: z.coerce
     .number()
@@ -119,18 +120,110 @@ function genreExists(name: string): SQL {
   );
 }
 
+// Builds the genre array for a page of title ids.
+async function fetchGenreMap(pageIds: number[]): Promise<Map<number, string[]>> {
+  if (pageIds.length === 0) return new Map();
+  const rows = await db
+    .select({ titleId: titleGenres.titleId, name: genres.name })
+    .from(titleGenres)
+    .innerJoin(genres, eq(titleGenres.genreId, genres.id))
+    .where(inArray(titleGenres.titleId, pageIds));
+  const map = new Map<number, string[]>();
+  for (const g of rows) {
+    const arr = map.get(g.titleId) ?? [];
+    arr.push(g.name);
+    map.set(g.titleId, arr);
+  }
+  return map;
+}
+
 const listRoute = createRoute({
   method: 'get',
   path: '/api/movies',
   tags: [Tags.MOVIES],
   summary: 'List titles',
   description:
-    'Paginated catalog of movies and series. Supports text search (ILIKE) and combinable filters by type, year (exact or yearFrom/yearTo range), genre(s), minRating, and minVotes. Sortable by rating, year, numVotes, title, or createdAt in either direction (default rating desc).',
+    'Paginated catalog of movies and series. Text search (`q`) matches title, director, and actor names. Supports combinable filters by type, year, genre(s), minRating, and minVotes. Sortable by rating, year, numVotes, title, or createdAt (default rating desc).',
   request: { query: moviesQuerySchema },
   responses: {
     200: {
       content: { 'application/json': { schema: titleListSchema } },
       description: 'List of titles',
+    },
+    400: { ...jsonError, description: 'Validation error' },
+  },
+});
+
+const popularRoute = createRoute({
+  method: 'get',
+  path: '/api/movies/popular',
+  tags: [Tags.MOVIES],
+  summary: 'Popular titles',
+  description:
+    'Top titles ranked by IMDb rating then vote count (both desc). Optionally filter by type. Max limit 50.',
+  request: {
+    query: z.object({
+      type: z.enum(['movie', 'series']).optional().openapi({ description: 'Filter by type.' }),
+      page: z.coerce.number().int().min(1).max(MAX_PAGE).default(1).openapi({ example: 1 }),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .openapi({ example: 10, description: 'Max 50.' }),
+    }),
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: titleListSchema } },
+      description: 'Popular titles',
+    },
+    400: { ...jsonError, description: 'Validation error' },
+  },
+});
+
+const autocompleteResponseSchema = z
+  .object({
+    data: z.array(
+      z.object({
+        id: z.number().int().openapi({ example: 889 }),
+        title: z.string().openapi({ example: 'Breaking Bad' }),
+        year: z.number().int().openapi({ example: 2008 }),
+        type: z.enum(['movie', 'series']).openapi({ example: 'series' }),
+      }),
+    ),
+  })
+  .openapi('AutocompleteResponse');
+
+const autocompleteRoute = createRoute({
+  method: 'get',
+  path: '/api/movies/autocomplete',
+  tags: [Tags.MOVIES],
+  summary: 'Autocomplete title search',
+  description:
+    'Quick title suggestions for `q`. Titles whose name starts with `q` rank before those that merely contain it. Max 20 results.',
+  request: {
+    query: z.object({
+      q: z
+        .string()
+        .min(1)
+        .max(100)
+        .openapi({ description: 'Search prefix/substring (required).', example: 'Break' }),
+      type: z.enum(['movie', 'series']).optional().openapi({ description: 'Filter by type.' }),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .default(8)
+        .openapi({ example: 8, description: 'Max 20.' }),
+    }),
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: autocompleteResponseSchema } },
+      description: 'Matching titles',
     },
     400: { ...jsonError, description: 'Validation error' },
   },
@@ -192,6 +285,7 @@ export const moviesRouter = new OpenAPIHono<{ Variables: OptionalAuthVariables }
 
 moviesRouter.use('/api/movies/:id', optionalAuth);
 
+// Static routes must be registered before /{id} to avoid the param swallowing them.
 moviesRouter.openapi(listRoute, async (c) => {
   const {
     q,
@@ -214,7 +308,7 @@ moviesRouter.openapi(listRoute, async (c) => {
   const conditions: SQL[] = [];
 
   if (q && q.trim() !== '') {
-    conditions.push(sql`${titles.title} ILIKE ${`%${escapeLikePattern(q)}%`} ESCAPE '\\'`);
+    conditions.push(titleSearchCondition(q));
   }
   if (type) {
     conditions.push(eq(titles.type, type));
@@ -246,12 +340,10 @@ moviesRouter.openapi(listRoute, async (c) => {
       .filter((g) => g !== '');
     if (names.length > 0) {
       if (genreMode === 'all') {
-        // Require an exists() per genre so the title must match every one.
         for (const name of names) {
           conditions.push(genreExists(name));
         }
       } else {
-        // any: match at least one of the listed genres.
         conditions.push(or(...names.map((name) => genreExists(name))) as SQL);
       }
     }
@@ -271,23 +363,7 @@ moviesRouter.openapi(listRoute, async (c) => {
     .limit(limit)
     .offset(offset);
 
-  const pageIds = rows.map((r) => r.id);
-
-  const genreRows =
-    pageIds.length > 0
-      ? await db
-          .select({ titleId: titleGenres.titleId, name: genres.name })
-          .from(titleGenres)
-          .innerJoin(genres, eq(titleGenres.genreId, genres.id))
-          .where(inArray(titleGenres.titleId, pageIds))
-      : [];
-
-  const genreMap = new Map<number, string[]>();
-  for (const g of genreRows) {
-    const arr = genreMap.get(g.titleId) ?? [];
-    arr.push(g.name);
-    genreMap.set(g.titleId, arr);
-  }
+  const genreMap = await fetchGenreMap(rows.map((r) => r.id));
 
   const data = rows.map((t) => ({
     id: t.id,
@@ -301,18 +377,69 @@ moviesRouter.openapi(listRoute, async (c) => {
     numVotes: t.numVotes,
   }));
 
-  return c.json(
-    {
-      data,
-      pagination: {
-        page,
-        limit,
-        total: Number(total),
-        totalPages: Math.ceil(Number(total) / limit),
-      },
-    },
-    200,
-  );
+  return c.json({ data, pagination: buildPagination(page, limit, Number(total)) }, 200);
+});
+
+moviesRouter.openapi(popularRoute, async (c) => {
+  const { type, page, limit } = c.req.valid('query');
+  const offset = (page - 1) * limit;
+
+  const whereClause = type ? eq(titles.type, type) : undefined;
+
+  const totalRows = await db.select({ value: count() }).from(titles).where(whereClause);
+  const total = totalRows[0]?.value ?? 0;
+
+  const rows = await db
+    .select()
+    .from(titles)
+    .where(whereClause)
+    .orderBy(desc(titles.rating), desc(titles.numVotes), desc(titles.id))
+    .limit(limit)
+    .offset(offset);
+
+  const genreMap = await fetchGenreMap(rows.map((r) => r.id));
+
+  const data = rows.map((t) => ({
+    id: t.id,
+    type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+    title: t.title,
+    year: t.year,
+    director: t.director ?? null,
+    rating: Number(t.rating),
+    posterUrl: t.posterUrl ?? null,
+    genres: genreMap.get(t.id) ?? [],
+    numVotes: t.numVotes,
+  }));
+
+  return c.json({ data, pagination: buildPagination(page, limit, Number(total)) }, 200);
+});
+
+moviesRouter.openapi(autocompleteRoute, async (c) => {
+  const { q, type, limit } = c.req.valid('query');
+
+  const pat = `%${escapeLikePattern(q)}%`;
+  const prefixPat = `${escapeLikePattern(q)}%`;
+
+  const conditions: SQL[] = [sql`${titles.title} ILIKE ${pat} ESCAPE '\\'`];
+  if (type) conditions.push(eq(titles.type, type));
+
+  const rankExpr = sql<number>`CASE WHEN ${titles.title} ILIKE ${prefixPat} ESCAPE '\\' THEN 0 ELSE 1 END`;
+
+  const rows = await db
+    .select({ id: titles.id, title: titles.title, year: titles.year, type: titles.type })
+    .from(titles)
+    .where(and(...conditions))
+    .orderBy(asc(rankExpr), desc(titles.rating), desc(titles.numVotes))
+    .limit(limit);
+
+  const data = rows.map((t) => ({
+    id: t.id,
+    title: t.title,
+    year: t.year,
+    type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+  }));
+
+  return c.json({ data }, 200);
 });
 
 moviesRouter.openapi(detailRoute, async (c) => {
@@ -416,23 +543,7 @@ moviesRouter.openapi(similarRoute, async (c) => {
     .orderBy(desc(sharedCount), desc(titles.rating), desc(titles.id))
     .limit(limit);
 
-  const pageIds = ranked.map((r) => r.id);
-
-  const genreRows =
-    pageIds.length > 0
-      ? await db
-          .select({ titleId: titleGenres.titleId, name: genres.name })
-          .from(titleGenres)
-          .innerJoin(genres, eq(titleGenres.genreId, genres.id))
-          .where(inArray(titleGenres.titleId, pageIds))
-      : [];
-
-  const genreMap = new Map<number, string[]>();
-  for (const g of genreRows) {
-    const arr = genreMap.get(g.titleId) ?? [];
-    arr.push(g.name);
-    genreMap.set(g.titleId, arr);
-  }
+  const genreMap = await fetchGenreMap(ranked.map((r) => r.id));
 
   const data = ranked.map((t) => ({
     id: t.id,

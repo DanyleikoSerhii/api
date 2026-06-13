@@ -18,4 +18,29 @@ describe('GET /api/genres', () => {
     expect(data).toContain('Drama');
     expect(data).toContain('Crime');
   });
+
+  it('filters by q returns matching genres', async () => {
+    const { status, body } = await request('/api/genres?q=dra');
+    expect(status).toBe(200);
+    const data = (body as Record<string, unknown>).data as string[];
+    expect(data).toContain('Drama');
+    expect(data).not.toContain('Crime');
+    expect(data).not.toContain('Action');
+  });
+
+  it('q is case-insensitive', async () => {
+    const { body: lower } = await request('/api/genres?q=drama');
+    const { body: upper } = await request('/api/genres?q=DRAMA');
+    const lData = (lower as Record<string, unknown>).data as string[];
+    const uData = (upper as Record<string, unknown>).data as string[];
+    expect(lData).toEqual(uData);
+    expect(lData).toContain('Drama');
+  });
+
+  it('returns empty array for unmatched q', async () => {
+    const { status, body } = await request('/api/genres?q=zzznonexistent');
+    expect(status).toBe(200);
+    const data = (body as Record<string, unknown>).data as string[];
+    expect(data.length).toBe(0);
+  });
 });

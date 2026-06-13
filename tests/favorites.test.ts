@@ -96,6 +96,87 @@ describe('GET /api/favorites', () => {
     expect((b.data as unknown[]).length).toBe(1);
     expect((b.pagination as Record<string, number>).total).toBe(1);
   });
+
+  it('searches favorites by title via q', async () => {
+    const token = await registerAndGetToken();
+
+    // Add all seeded titles to favorites
+    const { body: list } = await request('/api/movies?limit=100');
+    const allIds = ((list as Record<string, unknown>).data as Record<string, unknown>[]).map(
+      (t) => t.id as number,
+    );
+    for (const id of allIds) {
+      await request(`/api/favorites/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+
+    const { status, body } = await request('/api/favorites?q=Breaking', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(status).toBe(200);
+    const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
+    expect(data.length).toBeGreaterThan(0);
+    expect(data.some((t) => (t.title as string).includes('Breaking'))).toBe(true);
+  });
+
+  it('searches favorites by actor name via q', async () => {
+    const token = await registerAndGetToken();
+    // Breaking Bad has Bryan Cranston in cast (seeded)
+    const { body: list } = await request('/api/movies?q=Breaking&limit=1');
+    const bbId = ((list as Record<string, unknown>).data as Record<string, unknown>[])[0]
+      .id as number;
+    await request(`/api/favorites/${bbId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const { status, body } = await request('/api/favorites?q=Cranston', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(status).toBe(200);
+    const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
+    expect(data.some((t) => t.title === 'Breaking Bad')).toBe(true);
+  });
+
+  it('sorts favorites by year ascending', async () => {
+    const token = await registerAndGetToken();
+    const { body: list } = await request('/api/movies?limit=100');
+    const allIds = ((list as Record<string, unknown>).data as Record<string, unknown>[]).map(
+      (t) => t.id as number,
+    );
+    for (const id of allIds) {
+      await request(`/api/favorites/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+
+    const { status, body } = await request('/api/favorites?sort=year&order=asc', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(status).toBe(200);
+    const years = (
+      (body as Record<string, unknown>).data as Record<string, unknown>[]
+    ).map((t) => t.year as number);
+    expect(years.length).toBeGreaterThan(1);
+    expect(years).toEqual([...years].sort((a, b) => a - b));
+  });
+
+  it('includes numVotes in response', async () => {
+    const token = await registerAndGetToken();
+    const titleId = await getFirstTitleId();
+    await request(`/api/favorites/${titleId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const { body } = await request('/api/favorites', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const item = ((body as Record<string, unknown>).data as Record<string, unknown>[])[0];
+    expect(typeof item.numVotes).toBe('number');
+  });
 });
 
 describe('DELETE /api/favorites/:titleId', () => {

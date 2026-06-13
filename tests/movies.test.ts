@@ -48,10 +48,23 @@ describe('GET /api/movies', () => {
     }
   });
 
-  it('searches by q', async () => {
+  it('searches by title via q', async () => {
     const { body } = await request('/api/movies?q=Breaking');
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
     expect(data.some((t) => (t.title as string).includes('Breaking'))).toBe(true);
+  });
+
+  it('searches by director name via q', async () => {
+    const { body } = await request('/api/movies?q=Gilligan');
+    const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
+    expect(data.some((t) => t.title === 'Breaking Bad' || t.title === 'The Wire')).toBe(true);
+  });
+
+  it('searches by actor name via q', async () => {
+    // Bryan Cranston is in Breaking Bad cast (seeded)
+    const { body } = await request('/api/movies?q=Cranston');
+    const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
+    expect(data.some((t) => t.title === 'Breaking Bad')).toBe(true);
   });
 
   it('rejects limit above 100 with 400', async () => {
@@ -257,5 +270,112 @@ describe('GET /api/movies/:id trailer & backdrop', () => {
     const b = body as Record<string, unknown>;
     expect(b.trailerUrl).toBeNull();
     expect(b.backdropUrl).toBeNull();
+  });
+});
+
+describe('GET /api/movies/popular', () => {
+  it('returns titles sorted by rating desc then numVotes desc', async () => {
+    const { status, body } = await request('/api/movies/popular?limit=7');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    const ratings = data.map((t) => t.rating as number);
+    const sorted = [...ratings].sort((a, b) => b - a);
+    expect(ratings).toEqual(sorted);
+  });
+
+  it('respects type=movie filter', async () => {
+    const { status, body } = await request('/api/movies/popular?type=movie');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(item.type).toBe('movie');
+    }
+  });
+
+  it('respects type=series filter', async () => {
+    const { status, body } = await request('/api/movies/popular?type=series');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(item.type).toBe('series');
+    }
+  });
+
+  it('respects limit param', async () => {
+    const { status, body } = await request('/api/movies/popular?limit=2');
+    expect(status).toBe(200);
+    expect(dataOf(body).length).toBeLessThanOrEqual(2);
+  });
+
+  it('rejects limit above 50 with 400', async () => {
+    const { status } = await request('/api/movies/popular?limit=51');
+    expect(status).toBe(400);
+  });
+
+  it('includes pagination', async () => {
+    const { body } = await request('/api/movies/popular');
+    const pagination = (body as Record<string, unknown>).pagination as Record<string, number>;
+    expect(pagination.page).toBe(1);
+    expect(pagination.total).toBeGreaterThan(0);
+  });
+});
+
+describe('GET /api/movies/autocomplete', () => {
+  it('returns matching titles for q=Break', async () => {
+    const { status, body } = await request('/api/movies/autocomplete?q=Break');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(typeof item.id).toBe('number');
+      expect(typeof item.title).toBe('string');
+      expect(typeof item.year).toBe('number');
+      expect(['movie', 'series']).toContain(item.type);
+    }
+  });
+
+  it('prefix matches rank before substring matches', async () => {
+    // "Breaking Bad" starts with "Break" — should come before any title that only contains it mid-word
+    const { body } = await request('/api/movies/autocomplete?q=The');
+    const data = dataOf(body);
+    // All seeded titles with "The" at start should precede those with "The" mid-string
+    const titles = data.map((t) => t.title as string);
+    const prefixMatches = titles.filter((t) => t.toLowerCase().startsWith('the'));
+    const substringOnly = titles.filter((t) => !t.toLowerCase().startsWith('the'));
+    // prefix matches should appear before substring-only matches
+    if (prefixMatches.length > 0 && substringOnly.length > 0) {
+      const lastPrefix = titles.lastIndexOf(prefixMatches[prefixMatches.length - 1]);
+      const firstSubstring = titles.indexOf(substringOnly[0]);
+      expect(lastPrefix).toBeLessThan(firstSubstring);
+    }
+  });
+
+  it('filters by type', async () => {
+    const { status, body } = await request('/api/movies/autocomplete?q=Break&type=series');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(item.type).toBe('series');
+    }
+  });
+
+  it('respects limit param', async () => {
+    const { status, body } = await request('/api/movies/autocomplete?q=t&limit=2');
+    expect(status).toBe(200);
+    expect(dataOf(body).length).toBeLessThanOrEqual(2);
+  });
+
+  it('returns 400 without q', async () => {
+    const { status } = await request('/api/movies/autocomplete');
+    expect(status).toBe(400);
+  });
+
+  it('returns 400 for limit above 20', async () => {
+    const { status } = await request('/api/movies/autocomplete?q=a&limit=21');
+    expect(status).toBe(400);
   });
 });
