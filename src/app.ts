@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { mountRoutes } from './routes/index.js';
 import { mountOpenAPI } from './openapi/spec.js';
 import { ErrorCode, errorResponse } from './lib/errors.js';
+import { pool } from './db/connection.js';
 import { env } from './env.js';
 
 export function createApp() {
@@ -41,7 +42,14 @@ export function createApp() {
     console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
   });
 
-  app.get('/health', (c) => c.json({ status: 'ok' }));
+  app.get('/health', async (c) => {
+    try {
+      await pool.query('SELECT 1');
+      return c.json({ status: 'ok', db: 'up' });
+    } catch {
+      return c.json({ status: 'degraded', db: 'down' }, 503);
+    }
+  });
 
   mountRoutes(app);
   mountOpenAPI(app);

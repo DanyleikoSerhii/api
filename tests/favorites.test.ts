@@ -131,6 +131,58 @@ describe('DELETE /api/favorites/:titleId', () => {
   });
 });
 
+describe('POST /api/favorites/check', () => {
+  it('returns 401 without token', async () => {
+    const { status } = await request('/api/favorites/check', {
+      method: 'POST',
+      body: { titleIds: [1] },
+    });
+    expect(status).toBe(401);
+  });
+
+  it('returns correct isFavorite map', async () => {
+    const token = await registerAndGetToken();
+    const { body: list } = await request('/api/titles?limit=2');
+    const ids = ((list as Record<string, unknown>).data as Record<string, unknown>[]).map(
+      (t) => t.id as number,
+    );
+    const [id0, id1] = ids;
+
+    // Add only the first to favorites
+    await request(`/api/favorites/${id0}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const { status, body } = await request('/api/favorites/check', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: { titleIds: [id0, id1] },
+    });
+    expect(status).toBe(200);
+
+    const data = (body as Record<string, unknown>).data as {
+      titleId: number;
+      isFavorite: boolean;
+    }[];
+    const entry0 = data.find((e) => e.titleId === id0);
+    const entry1 = data.find((e) => e.titleId === id1);
+    expect(entry0?.isFavorite).toBe(true);
+    expect(entry1?.isFavorite).toBe(false);
+  });
+
+  it('returns 400 on empty titleIds', async () => {
+    const token = await registerAndGetToken();
+    const { status, body } = await request('/api/favorites/check', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: { titleIds: [] },
+    });
+    expect(status).toBe(400);
+    expect((body as Record<string, Record<string, string>>).error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
 describe('isFavorite integration', () => {
   it('reflects true after adding and false after removing', async () => {
     const token = await registerAndGetToken();

@@ -1,5 +1,17 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { eq, and, desc, count, inArray, exists, sql, SQL } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  or,
+  asc,
+  desc,
+  count,
+  inArray,
+  exists,
+  sql,
+  SQL,
+  type AnyColumn,
+} from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { titles, titleGenres, genres, titleCast, people, favorites } from '../db/schema.js';
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
@@ -9,6 +21,7 @@ import {
   Tags,
   titleListSchema,
   titleDetailSchema,
+  similarTitlesSchema,
   errorResponseSchema,
 } from '../openapi/schemas.js';
 
@@ -36,6 +49,44 @@ const titlesQuerySchema = z.object({
     .max(100)
     .optional()
     .openapi({ description: 'Filter by genre name (case-insensitive).', example: 'Drama' }),
+  genres: z.string().max(500).optional().openapi({
+    description: 'Comma-separated genre names (case-insensitive), e.g. "Drama,Crime".',
+    example: 'Drama,Crime',
+  }),
+  genreMode: z.enum(['any', 'all']).default('any').openapi({
+    description: '`any` = matches at least one of `genres`; `all` = matches every listed genre.',
+  }),
+  yearFrom: z.coerce
+    .number()
+    .int()
+    .min(1800)
+    .max(2200)
+    .optional()
+    .openapi({ description: 'Filter by year >= yearFrom.', example: 1990 }),
+  yearTo: z.coerce
+    .number()
+    .int()
+    .min(1800)
+    .max(2200)
+    .optional()
+    .openapi({ description: 'Filter by year <= yearTo.', example: 2010 }),
+  minRating: z.coerce
+    .number()
+    .min(0)
+    .max(10)
+    .optional()
+    .openapi({ description: 'Filter by rating >= minRating.', example: 9 }),
+  minVotes: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .openapi({ description: 'Filter by numVotes >= minVotes.', example: 100000 }),
+  sort: z
+    .enum(['rating', 'year', 'numVotes', 'title', 'createdAt'])
+    .default('rating')
+    .openapi({ description: 'Sort column.' }),
+  order: z.enum(['asc', 'desc']).default('desc').openapi({ description: 'Sort direction.' }),
   page: z.coerce.number().int().min(1).max(MAX_PAGE).default(1).openapi({ example: 1 }),
   limit: z.coerce
     .number()
@@ -46,13 +97,34 @@ const titlesQuerySchema = z.object({
     .openapi({ example: 20, description: `Max ${MAX_LIMIT}.` }),
 });
 
+const sortColumns: Record<'rating' | 'year' | 'numVotes' | 'title' | 'createdAt', AnyColumn> = {
+  rating: titles.rating,
+  year: titles.year,
+  numVotes: titles.numVotes,
+  title: titles.title,
+  createdAt: titles.createdAt,
+};
+
+function genreExists(name: string): SQL {
+  const escaped = escapeLikePattern(name);
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(titleGenres)
+      .innerJoin(genres, eq(titleGenres.genreId, genres.id))
+      .where(
+        and(eq(titleGenres.titleId, titles.id), sql`${genres.name} ILIKE ${escaped} ESCAPE '\\'`),
+      ),
+  );
+}
+
 const listRoute = createRoute({
   method: 'get',
   path: '/api/titles',
   tags: [Tags.TITLES],
   summary: 'List titles',
   description:
-    'Paginated catalog of movies and series. Supports text search (ILIKE) and combinable filters by type, year, and genre. Sorted by IMDb rating descending.',
+    'Paginated catalog of movies and series. Supports text search (ILIKE) and combinable filters by type, year (exact or yearFrom/yearTo range), genre(s), minRating, and minVotes. Sortable by rating, year, numVotes, title, or createdAt in either direction (default rating desc).',
   request: { query: titlesQuerySchema },
   responses: {
     200: {
@@ -83,6 +155,34 @@ const detailRoute = createRoute({
   },
 });
 
+const similarRoute = createRoute({
+  method: 'get',
+  path: '/api/titles/{id}/similar',
+  tags: [Tags.TITLES],
+  summary: 'List similar titles',
+  description:
+    'Returns other titles that share at least one genre with the target, ranked by number of shared genres (desc) then IMDb rating (desc). The target title itself is excluded. Returns an empty array if the target has no genres.',
+  request: {
+    params: z.object({ id: z.coerce.number().int().positive().openapi({ example: 889 }) }),
+    query: z.object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .openapi({ example: 10, description: 'Max 50.' }),
+    }),
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: similarTitlesSchema } },
+      description: 'Similar titles',
+    },
+    404: { ...jsonError, description: 'Title not found' },
+  },
+});
+
 type OptionalAuthVariables = {
   user: { sub: number; email: string } | null;
 };
@@ -92,7 +192,22 @@ export const titlesRouter = new OpenAPIHono<{ Variables: OptionalAuthVariables }
 titlesRouter.use('/api/titles/:id', optionalAuth);
 
 titlesRouter.openapi(listRoute, async (c) => {
-  const { q, type, year, genre, page, limit } = c.req.valid('query');
+  const {
+    q,
+    type,
+    year,
+    genre,
+    genres: genresParam,
+    genreMode,
+    yearFrom,
+    yearTo,
+    minRating,
+    minVotes,
+    sort,
+    order,
+    page,
+    limit,
+  } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
   const conditions: SQL[] = [];
@@ -106,23 +221,39 @@ titlesRouter.openapi(listRoute, async (c) => {
   if (year) {
     conditions.push(eq(titles.year, year));
   }
+  if (yearFrom !== undefined) {
+    conditions.push(sql`${titles.year} >= ${yearFrom}`);
+  }
+  if (yearTo !== undefined) {
+    conditions.push(sql`${titles.year} <= ${yearTo}`);
+  }
+  if (minRating !== undefined) {
+    conditions.push(sql`${titles.rating} >= ${minRating}`);
+  }
+  if (minVotes !== undefined) {
+    conditions.push(sql`${titles.numVotes} >= ${minVotes}`);
+  }
 
   if (genre) {
-    const escaped = escapeLikePattern(genre);
-    conditions.push(
-      exists(
-        db
-          .select({ one: sql`1` })
-          .from(titleGenres)
-          .innerJoin(genres, eq(titleGenres.genreId, genres.id))
-          .where(
-            and(
-              eq(titleGenres.titleId, titles.id),
-              sql`${genres.name} ILIKE ${escaped} ESCAPE '\\'`,
-            ),
-          ),
-      ),
-    );
+    conditions.push(genreExists(genre));
+  }
+
+  if (genresParam) {
+    const names = genresParam
+      .split(',')
+      .map((g) => g.trim())
+      .filter((g) => g !== '');
+    if (names.length > 0) {
+      if (genreMode === 'all') {
+        // Require an exists() per genre so the title must match every one.
+        for (const name of names) {
+          conditions.push(genreExists(name));
+        }
+      } else {
+        // any: match at least one of the listed genres.
+        conditions.push(or(...names.map((name) => genreExists(name))) as SQL);
+      }
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -130,11 +261,12 @@ titlesRouter.openapi(listRoute, async (c) => {
   const totalRows = await db.select({ value: count() }).from(titles).where(whereClause);
   const total = totalRows[0]?.value ?? 0;
 
+  const sortDir = order === 'asc' ? asc : desc;
   const rows = await db
     .select()
     .from(titles)
     .where(whereClause)
-    .orderBy(desc(titles.rating))
+    .orderBy(sortDir(sortColumns[sort]), desc(titles.id))
     .limit(limit)
     .offset(offset);
 
@@ -165,6 +297,7 @@ titlesRouter.openapi(listRoute, async (c) => {
     rating: Number(t.rating),
     posterUrl: t.posterUrl ?? null,
     genres: genreMap.get(t.id) ?? [],
+    numVotes: t.numVotes,
   }));
 
   return c.json(
@@ -229,6 +362,7 @@ titlesRouter.openapi(detailRoute, async (c) => {
       director: title.director ?? null,
       description: title.description ?? null,
       rating: Number(title.rating),
+      numVotes: title.numVotes,
       posterUrl: title.posterUrl ?? null,
       genres: titleGenreRows.map((g) => g.name),
       seasonsCount: title.seasonsCount ?? null,
@@ -238,4 +372,76 @@ titlesRouter.openapi(detailRoute, async (c) => {
     },
     200,
   );
+});
+
+titlesRouter.openapi(similarRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const { limit } = c.req.valid('query');
+
+  const [title] = await db.select({ id: titles.id }).from(titles).where(eq(titles.id, id)).limit(1);
+  if (!title) {
+    return errorResponse(c, ErrorCode.NOT_FOUND, 'Title not found') as never;
+  }
+
+  const targetGenreRows = await db
+    .select({ genreId: titleGenres.genreId })
+    .from(titleGenres)
+    .where(eq(titleGenres.titleId, id));
+  const genreIds = targetGenreRows.map((g) => g.genreId);
+
+  if (genreIds.length === 0) {
+    return c.json({ data: [] }, 200);
+  }
+
+  const sharedCount = sql<number>`count(*)`.as('shared_count');
+  const ranked = await db
+    .select({
+      id: titles.id,
+      type: titles.type,
+      title: titles.title,
+      year: titles.year,
+      director: titles.director,
+      rating: titles.rating,
+      posterUrl: titles.posterUrl,
+      numVotes: titles.numVotes,
+      sharedCount,
+    })
+    .from(titles)
+    .innerJoin(titleGenres, eq(titleGenres.titleId, titles.id))
+    .where(and(inArray(titleGenres.genreId, genreIds), sql`${titles.id} <> ${id}`))
+    .groupBy(titles.id)
+    .orderBy(desc(sharedCount), desc(titles.rating), desc(titles.id))
+    .limit(limit);
+
+  const pageIds = ranked.map((r) => r.id);
+
+  const genreRows =
+    pageIds.length > 0
+      ? await db
+          .select({ titleId: titleGenres.titleId, name: genres.name })
+          .from(titleGenres)
+          .innerJoin(genres, eq(titleGenres.genreId, genres.id))
+          .where(inArray(titleGenres.titleId, pageIds))
+      : [];
+
+  const genreMap = new Map<number, string[]>();
+  for (const g of genreRows) {
+    const arr = genreMap.get(g.titleId) ?? [];
+    arr.push(g.name);
+    genreMap.set(g.titleId, arr);
+  }
+
+  const data = ranked.map((t) => ({
+    id: t.id,
+    type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+    title: t.title,
+    year: t.year,
+    director: t.director ?? null,
+    rating: Number(t.rating),
+    posterUrl: t.posterUrl ?? null,
+    genres: genreMap.get(t.id) ?? [],
+    numVotes: t.numVotes,
+  }));
+
+  return c.json({ data }, 200);
 });

@@ -78,6 +78,11 @@ export const titleSummarySchema = z
       .nullable()
       .openapi({ example: 'https://placehold.co/300x450?text=The%20Matrix' }),
     genres: z.array(z.string()).openapi({ example: ['Action', 'Sci-Fi'] }),
+    numVotes: z
+      .number()
+      .int()
+      .optional()
+      .openapi({ example: 1900000, description: 'IMDb numVotes. Omitted on some responses.' }),
   })
   .openapi('TitleSummary');
 
@@ -87,6 +92,12 @@ export const titleListSchema = z
     pagination: paginationSchema,
   })
   .openapi('TitleList');
+
+export const similarTitlesSchema = z
+  .object({
+    data: z.array(titleSummarySchema),
+  })
+  .openapi('SimilarTitles');
 
 export const castMemberSchema = z
   .object({
@@ -114,6 +125,7 @@ export const titleDetailSchema = z
         'Always null; IMDb Non-Commercial dumps have no plot. Reserved for future TMDB enrichment.',
     }),
     rating: z.number().openapi({ example: 9.5 }),
+    numVotes: z.number().int().openapi({ example: 2000000, description: 'IMDb numVotes.' }),
     posterUrl: z.string().nullable(),
     genres: z.array(z.string()).openapi({ example: ['Crime', 'Drama', 'Thriller'] }),
     seasonsCount: z

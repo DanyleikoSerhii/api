@@ -30,6 +30,23 @@ const titleIdParamSchema = z.object({
     .openapi({ example: 889, description: 'Title id from /api/titles.' }),
 });
 
+const bulkCheckBodySchema = z.object({
+  titleIds: z
+    .array(z.coerce.number().int().positive())
+    .min(1)
+    .max(100)
+    .openapi({ example: [889, 1234] }),
+});
+
+const bulkCheckResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      titleId: z.number().int().positive().openapi({ example: 889 }),
+      isFavorite: z.boolean().openapi({ example: true }),
+    }),
+  ),
+});
+
 const listRoute = createRoute({
   method: 'get',
   path: '/api/favorites',
@@ -44,6 +61,30 @@ const listRoute = createRoute({
       content: { 'application/json': { schema: titleListSchema } },
       description: 'Favorites list',
     },
+    401: { ...jsonError, description: 'Missing or invalid token' },
+  },
+});
+
+const checkRoute = createRoute({
+  method: 'post',
+  path: '/api/favorites/check',
+  tags: [Tags.FAVORITES],
+  summary: 'Bulk favorite-status lookup',
+  description:
+    'Given a list of title ids, returns the favorite status for the authenticated user. One entry per requested id (deduped).',
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: {
+      content: { 'application/json': { schema: bulkCheckBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: bulkCheckResponseSchema } },
+      description: 'Favorite-status map',
+    },
+    400: { ...jsonError, description: 'Validation error' },
     401: { ...jsonError, description: 'Missing or invalid token' },
   },
 });
@@ -156,6 +197,27 @@ favoritesRouter.openapi(listRoute, async (c) => {
     },
     200,
   );
+});
+
+favoritesRouter.openapi(checkRoute, async (c) => {
+  const user = c.get('user');
+  const { titleIds } = c.req.valid('json');
+
+  const uniqueIds = [...new Set(titleIds)];
+
+  const rows = await db
+    .select({ titleId: favorites.titleId })
+    .from(favorites)
+    .where(and(eq(favorites.userId, user.sub), inArray(favorites.titleId, uniqueIds)));
+
+  const favoritedIds = new Set(rows.map((r) => r.titleId));
+
+  const data = uniqueIds.map((titleId) => ({
+    titleId,
+    isFavorite: favoritedIds.has(titleId),
+  }));
+
+  return c.json({ data }, 200);
 });
 
 favoritesRouter.openapi(addRoute, async (c) => {
