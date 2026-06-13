@@ -43,32 +43,33 @@ const favSortColumns: Record<FavSortKey, AnyColumn> = {
   addedAt: favorites.addedAt,
 };
 
-const titleIdParamSchema = z.object({
-  titleId: z.coerce
+const idParamSchema = z.object({
+  id: z.coerce
     .number()
     .int()
     .positive()
-    .openapi({ example: 889, description: 'Movie id from /api/movies.' }),
+    .openapi({ example: 889, description: 'Movie or series id.' }),
 });
 
 const bulkCheckBodySchema = z.object({
-  titleIds: z
+  ids: z
     .array(z.coerce.number().int().positive())
     .min(1)
     .max(100)
-    .openapi({ example: [889, 1234] }),
+    .openapi({ example: [889, 1234], description: 'List of movie/series ids to check (max 100).' }),
 });
 
 const bulkCheckResponseSchema = z.object({
   data: z.array(
     z.object({
-      titleId: z.number().int().positive().openapi({ example: 889 }),
+      id: z.number().int().positive().openapi({ example: 889 }),
       isFavorite: z.boolean().openapi({ example: true }),
     }),
   ),
 });
 
 const listRoute = createRoute({
+  operationId: 'listFavorites',
   method: 'get',
   path: '/api/favorites',
   tags: [Tags.FAVORITES],
@@ -87,12 +88,13 @@ const listRoute = createRoute({
 });
 
 const checkRoute = createRoute({
+  operationId: 'checkFavorites',
   method: 'post',
   path: '/api/favorites/check',
   tags: [Tags.FAVORITES],
   summary: 'Bulk favorite-status lookup',
   description:
-    'Given a list of title ids, returns the favorite status for the authenticated user. One entry per requested id (deduped).',
+    'Given a list of movie/series ids, returns the favorite status for each. Input ids are deduped; one entry per unique id is returned.',
   security: [{ BearerAuth: [] }],
   request: {
     body: {
@@ -111,14 +113,14 @@ const checkRoute = createRoute({
 });
 
 const addRoute = createRoute({
+  operationId: 'addFavorite',
   method: 'post',
-  path: '/api/favorites/{titleId}',
+  path: '/api/favorites/{id}',
   tags: [Tags.FAVORITES],
   summary: 'Add a title to favorites',
-  description:
-    'Idempotency note: returns 409 if the pair already exists rather than silently re-inserting.',
+  description: 'Returns 409 if the title is already in favorites.',
   security: [{ BearerAuth: [] }],
-  request: { params: titleIdParamSchema },
+  request: { params: idParamSchema },
   responses: {
     201: {
       content: { 'application/json': { schema: addFavoriteResponseSchema } },
@@ -131,14 +133,14 @@ const addRoute = createRoute({
 });
 
 const deleteRoute = createRoute({
+  operationId: 'removeFavorite',
   method: 'delete',
-  path: '/api/favorites/{titleId}',
+  path: '/api/favorites/{id}',
   tags: [Tags.FAVORITES],
   summary: 'Remove a title from favorites',
-  description:
-    '404 means the (user, title) pair is not in favorites. Title existence is not re-checked separately.',
+  description: 'Returns 404 if the (user, title) pair does not exist in favorites.',
   security: [{ BearerAuth: [] }],
-  request: { params: titleIdParamSchema },
+  request: { params: idParamSchema },
   responses: {
     204: { description: 'Removed (no content)' },
     401: { ...jsonError, description: 'Missing or invalid token' },
@@ -227,9 +229,9 @@ favoritesRouter.openapi(listRoute, async (c) => {
 
 favoritesRouter.openapi(checkRoute, async (c) => {
   const user = c.get('user');
-  const { titleIds } = c.req.valid('json');
+  const { ids } = c.req.valid('json');
 
-  const uniqueIds = [...new Set(titleIds)];
+  const uniqueIds = [...new Set(ids)];
 
   const rows = await db
     .select({ titleId: favorites.titleId })
@@ -238,9 +240,9 @@ favoritesRouter.openapi(checkRoute, async (c) => {
 
   const favoritedIds = new Set(rows.map((r) => r.titleId));
 
-  const data = uniqueIds.map((titleId) => ({
-    titleId,
-    isFavorite: favoritedIds.has(titleId),
+  const data = uniqueIds.map((id) => ({
+    id,
+    isFavorite: favoritedIds.has(id),
   }));
 
   return c.json({ data }, 200);
@@ -248,12 +250,12 @@ favoritesRouter.openapi(checkRoute, async (c) => {
 
 favoritesRouter.openapi(addRoute, async (c) => {
   const user = c.get('user');
-  const { titleId } = c.req.valid('param');
+  const { id } = c.req.valid('param');
 
   const title = await db
     .select({ id: titles.id })
     .from(titles)
-    .where(eq(titles.id, titleId))
+    .where(eq(titles.id, id))
     .limit(1);
   if (title.length === 0) {
     return errorResponse(c, ErrorCode.NOT_FOUND, 'Title not found') as never;
@@ -263,25 +265,25 @@ favoritesRouter.openapi(addRoute, async (c) => {
   // concurrent inserts would otherwise hit the unique PK constraint with a 500.
   const [fav] = await db
     .insert(favorites)
-    .values({ userId: user.sub, titleId })
+    .values({ userId: user.sub, titleId: id })
     .onConflictDoNothing()
-    .returning({ titleId: favorites.titleId, addedAt: favorites.addedAt });
+    .returning({ id: favorites.titleId, addedAt: favorites.addedAt });
 
   if (!fav) {
     return errorResponse(c, ErrorCode.CONFLICT, 'Already in favorites') as never;
   }
 
-  return c.json({ titleId: fav.titleId, addedAt: (fav.addedAt ?? new Date()).toISOString() }, 201);
+  return c.json({ id: fav.id, addedAt: (fav.addedAt ?? new Date()).toISOString() }, 201);
 });
 
 favoritesRouter.openapi(deleteRoute, async (c) => {
   const user = c.get('user');
-  const { titleId } = c.req.valid('param');
+  const { id } = c.req.valid('param');
 
   const deleted = await db
     .delete(favorites)
-    .where(and(eq(favorites.userId, user.sub), eq(favorites.titleId, titleId)))
-    .returning({ titleId: favorites.titleId });
+    .where(and(eq(favorites.userId, user.sub), eq(favorites.titleId, id)))
+    .returning({ id: favorites.titleId });
 
   if (deleted.length === 0) {
     return errorResponse(c, ErrorCode.NOT_FOUND, 'Favorite not found');

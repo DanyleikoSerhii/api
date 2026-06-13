@@ -5,6 +5,7 @@ export const Tags = {
   MOVIES: 'Movies',
   GENRES: 'Genres',
   FAVORITES: 'Favorites',
+  PEOPLE: 'People',
 } as const;
 
 export const errorResponseSchema = z
@@ -211,7 +212,7 @@ export const genresResponseSchema = z
 
 export const addFavoriteResponseSchema = z
   .object({
-    titleId: z.number().int().openapi({ example: 889 }),
+    id: z.number().int().openapi({ example: 889 }),
     addedAt: z
       .string()
       .openapi({ example: '2026-06-10T12:00:00.000Z', description: 'ISO 8601 timestamp (UTC).' }),

@@ -3,6 +3,7 @@ import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { people, titleCast, titles } from '../db/schema.js';
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
+import { Tags } from '../openapi/schemas.js';
 
 const errorSchema = z
   .object({
@@ -39,9 +40,10 @@ const personDetailSchema = z
 const jsonError = { content: { 'application/json': { schema: errorSchema } } };
 
 const detailRoute = createRoute({
+  operationId: 'getPerson',
   method: 'get',
   path: '/api/people/{id}',
-  tags: ['People'],
+  tags: [Tags.PEOPLE],
   summary: 'Get a person by id',
   description:
     'Returns the person plus their filmography (cast credits joined with titles), ordered by title rating descending. Filmography may be empty for directors with no cast rows.',

@@ -39,6 +39,7 @@ function toProfile(u: UserRow) {
 }
 
 const registerRoute = createRoute({
+  operationId: 'register',
   method: 'post',
   path: '/api/auth/register',
   tags: [Tags.AUTH],
@@ -60,6 +61,7 @@ const registerRoute = createRoute({
 });
 
 const loginRoute = createRoute({
+  operationId: 'login',
   method: 'post',
   path: '/api/auth/login',
   tags: [Tags.AUTH],
@@ -80,6 +82,7 @@ const loginRoute = createRoute({
 });
 
 const meRoute = createRoute({
+  operationId: 'getMe',
   method: 'get',
   path: '/api/auth/me',
   tags: [Tags.AUTH],
@@ -93,6 +96,7 @@ const meRoute = createRoute({
 });
 
 const updateProfileRoute = createRoute({
+  operationId: 'updateMe',
   method: 'patch',
   path: '/api/auth/me',
   tags: [Tags.AUTH],
@@ -115,6 +119,7 @@ const updateProfileRoute = createRoute({
 });
 
 const changePasswordRoute = createRoute({
+  operationId: 'changePassword',
   method: 'post',
   path: '/api/auth/change-password',
   tags: [Tags.AUTH],

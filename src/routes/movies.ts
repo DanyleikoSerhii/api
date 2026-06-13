@@ -138,6 +138,7 @@ async function fetchGenreMap(pageIds: number[]): Promise<Map<number, string[]>> 
 }
 
 const listRoute = createRoute({
+  operationId: 'listMovies',
   method: 'get',
   path: '/api/movies',
   tags: [Tags.MOVIES],
@@ -155,6 +156,7 @@ const listRoute = createRoute({
 });
 
 const popularRoute = createRoute({
+  operationId: 'listPopularMovies',
   method: 'get',
   path: '/api/movies/popular',
   tags: [Tags.MOVIES],
@@ -197,6 +199,7 @@ const autocompleteResponseSchema = z
   .openapi('AutocompleteResponse');
 
 const autocompleteRoute = createRoute({
+  operationId: 'autocompleteMovies',
   method: 'get',
   path: '/api/movies/autocomplete',
   tags: [Tags.MOVIES],
@@ -230,6 +233,7 @@ const autocompleteRoute = createRoute({
 });
 
 const detailRoute = createRoute({
+  operationId: 'getMovie',
   method: 'get',
   path: '/api/movies/{id}',
   tags: [Tags.MOVIES],
@@ -250,6 +254,7 @@ const detailRoute = createRoute({
 });
 
 const similarRoute = createRoute({
+  operationId: 'listSimilarMovies',
   method: 'get',
   path: '/api/movies/{id}/similar',
   tags: [Tags.MOVIES],

@@ -35,7 +35,7 @@ describe('POST /api/favorites/:titleId', () => {
     });
     expect(status).toBe(201);
     const b = body as Record<string, unknown>;
-    expect(b.titleId).toBe(titleId);
+    expect(b.id).toBe(titleId);
     expect(typeof b.addedAt).toBe('string');
   });
 
@@ -216,7 +216,7 @@ describe('POST /api/favorites/check', () => {
   it('returns 401 without token', async () => {
     const { status } = await request('/api/favorites/check', {
       method: 'POST',
-      body: { titleIds: [1] },
+      body: { ids: [1] },
     });
     expect(status).toBe(401);
   });
@@ -238,16 +238,16 @@ describe('POST /api/favorites/check', () => {
     const { status, body } = await request('/api/favorites/check', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: { titleIds: [id0, id1] },
+      body: { ids: [id0, id1] },
     });
     expect(status).toBe(200);
 
     const data = (body as Record<string, unknown>).data as {
-      titleId: number;
+      id: number;
       isFavorite: boolean;
     }[];
-    const entry0 = data.find((e) => e.titleId === id0);
-    const entry1 = data.find((e) => e.titleId === id1);
+    const entry0 = data.find((e) => e.id === id0);
+    const entry1 = data.find((e) => e.id === id1);
     expect(entry0?.isFavorite).toBe(true);
     expect(entry1?.isFavorite).toBe(false);
   });
@@ -257,7 +257,7 @@ describe('POST /api/favorites/check', () => {
     const { status, body } = await request('/api/favorites/check', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: { titleIds: [] },
+      body: { ids: [] },
     });
     expect(status).toBe(400);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('VALIDATION_ERROR');

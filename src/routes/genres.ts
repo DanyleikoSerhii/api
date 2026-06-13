@@ -7,6 +7,7 @@ import { escapeLikePattern } from '../lib/sql.js';
 import { Tags, genresResponseSchema } from '../openapi/schemas.js';
 
 const listRoute = createRoute({
+  operationId: 'listGenres',
   method: 'get',
   path: '/api/genres',
   tags: [Tags.GENRES],
