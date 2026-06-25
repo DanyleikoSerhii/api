@@ -79,9 +79,17 @@ export function mountOpenAPI(app: OpenAPIHono) {
   // out" fetches send that cookie, so protected endpoints work out of the box.
   // Per-request signing avoids a cookie that expires once the process has been
   // running longer than the JWT TTL.
+  //
+  // The auto-auth is best-effort: the docs are a static asset and must not 500
+  // just because the DB is unreachable. If minting the token fails, serve the UI
+  // without the cookie — the user can still authenticate manually.
   app.get('/api/docs', async (c) => {
-    const token = await getSystemUserToken();
-    setAuthCookie(c, token);
+    try {
+      const token = await getSystemUserToken();
+      setAuthCookie(c, token);
+    } catch (err) {
+      console.error('docs: failed to provision system-user auth cookie', err);
+    }
     return swaggerUI({
       url: '/api/openapi.json',
       withCredentials: true,
