@@ -26,7 +26,9 @@ describe('pickTrailerKey', () => {
   });
 
   it('returns null when there is no usable YouTube video', () => {
-    expect(pickTrailerKey([{ site: 'Vimeo', type: 'Trailer', key: 'v', official: true }])).toBeNull();
+    expect(
+      pickTrailerKey([{ site: 'Vimeo', type: 'Trailer', key: 'v', official: true }]),
+    ).toBeNull();
     expect(pickTrailerKey([])).toBeNull();
     expect(pickTrailerKey(undefined)).toBeNull();
   });

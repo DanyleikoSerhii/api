@@ -12,14 +12,14 @@ const listRoute = createRoute({
   path: '/api/genres',
   tags: [Tags.GENRES],
   summary: 'List all genres',
-  description: 'Returns genres present in the catalog, sorted alphabetically. Use `q` to filter by name.',
+  description:
+    'Returns genres present in the catalog, sorted alphabetically. Use `q` to filter by name.',
   request: {
     query: z.object({
-      q: z
-        .string()
-        .max(100)
-        .optional()
-        .openapi({ description: 'Filter genres by name substring (case-insensitive).', example: 'dra' }),
+      q: z.string().max(100).optional().openapi({
+        description: 'Filter genres by name substring (case-insensitive).',
+        example: 'dra',
+      }),
     }),
   },
   responses: {
