@@ -76,7 +76,7 @@ const listRoute = createRoute({
   summary: "List the user's favorites",
   description:
     'Paginated list of favorited titles. Supports text search (`q` matches title, director, actor) and sorting by rating, year, numVotes, title, or addedAt (default addedAt desc).',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: { query: favoritesQuerySchema },
   responses: {
     200: {
@@ -95,7 +95,7 @@ const checkRoute = createRoute({
   summary: 'Bulk favorite-status lookup',
   description:
     'Given a list of movie/series ids, returns the favorite status for each. Input ids are deduped; one entry per unique id is returned.',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: {
     body: {
       content: { 'application/json': { schema: bulkCheckBodySchema } },
@@ -119,7 +119,7 @@ const addRoute = createRoute({
   tags: [Tags.FAVORITES],
   summary: 'Add a title to favorites',
   description: 'Returns 409 if the title is already in favorites.',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: { params: idParamSchema },
   responses: {
     201: {
@@ -139,7 +139,7 @@ const deleteRoute = createRoute({
   tags: [Tags.FAVORITES],
   summary: 'Remove a title from favorites',
   description: 'Returns 404 if the (user, title) pair does not exist in favorites.',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: { params: idParamSchema },
   responses: {
     204: { description: 'Removed (no content)' },
@@ -252,11 +252,7 @@ favoritesRouter.openapi(addRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
 
-  const title = await db
-    .select({ id: titles.id })
-    .from(titles)
-    .where(eq(titles.id, id))
-    .limit(1);
+  const title = await db.select({ id: titles.id }).from(titles).where(eq(titles.id, id)).limit(1);
   if (title.length === 0) {
     return errorResponse(c, ErrorCode.NOT_FOUND, 'Title not found') as never;
   }

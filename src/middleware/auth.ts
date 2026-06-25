@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { verifyToken } from '../lib/jwt.js';
+import { getAuthToken } from '../lib/cookies.js';
 import { errorResponse, ErrorCode } from '../lib/errors.js';
 import { env } from '../env.js';
 
@@ -8,13 +9,9 @@ type AuthVariables = {
 };
 
 export const requireAuth: MiddlewareHandler<{ Variables: AuthVariables }> = async (c, next) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'Missing or invalid Authorization header');
-  }
-  const token = authHeader.slice(7).trim();
+  const token = getAuthToken(c);
   if (!token) {
-    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'Missing or invalid Authorization header');
+    return errorResponse(c, ErrorCode.UNAUTHORIZED, 'Missing authentication cookie');
   }
   try {
     const payload = await verifyToken(token, env.JWT_SECRET);

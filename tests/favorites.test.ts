@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { truncateAll } from './helpers/db.js';
-import { request } from './helpers/request.js';
+import { request, authCookie } from './helpers/request.js';
 
 async function registerAndGetToken(email = 'favuser@example.com'): Promise<string> {
-  const { body } = await request('/api/auth/register', {
+  const { cookies } = await request('/api/auth/register', {
     method: 'POST',
     body: { email, password: 'secret123' },
   });
-  return (body as Record<string, string>).token;
+  return cookies.token;
 }
 
 async function getFirstTitleId(): Promise<number> {
@@ -31,7 +31,7 @@ describe('POST /api/favorites/:titleId', () => {
     const titleId = await getFirstTitleId();
     const { status, body } = await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(201);
     const b = body as Record<string, unknown>;
@@ -44,11 +44,11 @@ describe('POST /api/favorites/:titleId', () => {
     const titleId = await getFirstTitleId();
     await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const { status, body } = await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(409);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('CONFLICT');
@@ -58,7 +58,7 @@ describe('POST /api/favorites/:titleId', () => {
     const token = await registerAndGetToken();
     const { status, body } = await request('/api/favorites/999999', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(404);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('NOT_FOUND');
@@ -74,7 +74,7 @@ describe('GET /api/favorites', () => {
   it('returns empty list initially', async () => {
     const token = await registerAndGetToken();
     const { status, body } = await request('/api/favorites', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
@@ -87,10 +87,10 @@ describe('GET /api/favorites', () => {
     const titleId = await getFirstTitleId();
     await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const { body } = await request('/api/favorites', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const b = body as Record<string, unknown>;
     expect((b.data as unknown[]).length).toBe(1);
@@ -108,12 +108,12 @@ describe('GET /api/favorites', () => {
     for (const id of allIds) {
       await request(`/api/favorites/${id}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authCookie(token),
       });
     }
 
     const { status, body } = await request('/api/favorites?q=Breaking', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
@@ -129,11 +129,11 @@ describe('GET /api/favorites', () => {
       .id as number;
     await request(`/api/favorites/${bbId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
 
     const { status, body } = await request('/api/favorites?q=Cranston', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
     const data = (body as Record<string, unknown>).data as Record<string, unknown>[];
@@ -149,17 +149,17 @@ describe('GET /api/favorites', () => {
     for (const id of allIds) {
       await request(`/api/favorites/${id}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authCookie(token),
       });
     }
 
     const { status, body } = await request('/api/favorites?sort=year&order=asc', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
-    const years = (
-      (body as Record<string, unknown>).data as Record<string, unknown>[]
-    ).map((t) => t.year as number);
+    const years = ((body as Record<string, unknown>).data as Record<string, unknown>[]).map(
+      (t) => t.year as number,
+    );
     expect(years.length).toBeGreaterThan(1);
     expect(years).toEqual([...years].sort((a, b) => a - b));
   });
@@ -169,10 +169,10 @@ describe('GET /api/favorites', () => {
     const titleId = await getFirstTitleId();
     await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const { body } = await request('/api/favorites', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const item = ((body as Record<string, unknown>).data as Record<string, unknown>[])[0];
     expect(typeof item.numVotes).toBe('number');
@@ -191,11 +191,11 @@ describe('DELETE /api/favorites/:titleId', () => {
     const titleId = await getFirstTitleId();
     await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     const { status } = await request(`/api/favorites/${titleId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(204);
   });
@@ -205,7 +205,7 @@ describe('DELETE /api/favorites/:titleId', () => {
     const titleId = await getFirstTitleId();
     const { status, body } = await request(`/api/favorites/${titleId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(404);
     expect((body as Record<string, Record<string, string>>).error.code).toBe('NOT_FOUND');
@@ -232,12 +232,12 @@ describe('POST /api/favorites/check', () => {
     // Add only the first to favorites
     await request(`/api/favorites/${id0}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
 
     const { status, body } = await request('/api/favorites/check', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { ids: [id0, id1] },
     });
     expect(status).toBe(200);
@@ -256,7 +256,7 @@ describe('POST /api/favorites/check', () => {
     const token = await registerAndGetToken();
     const { status, body } = await request('/api/favorites/check', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { ids: [] },
     });
     expect(status).toBe(400);
@@ -271,31 +271,31 @@ describe('isFavorite integration', () => {
 
     // Before adding — false
     const { body: before } = await request(`/api/movies/${titleId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect((before as Record<string, unknown>).isFavorite).toBe(false);
 
     // Add favorite
     await request(`/api/favorites/${titleId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
 
     // After adding — true
     const { body: after } = await request(`/api/movies/${titleId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect((after as Record<string, unknown>).isFavorite).toBe(true);
 
     // Remove favorite
     await request(`/api/favorites/${titleId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
 
     // After removing — false
     const { body: final } = await request(`/api/movies/${titleId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect((final as Record<string, unknown>).isFavorite).toBe(false);
   });

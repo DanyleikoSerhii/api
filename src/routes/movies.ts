@@ -33,11 +33,10 @@ const MAX_PAGE = 10_000;
 const MAX_LIMIT = 100;
 
 const moviesQuerySchema = z.object({
-  q: z
-    .string()
-    .max(100)
-    .optional()
-    .openapi({ description: 'Search by title, director, or actor (ILIKE %q%). Max 100 chars.', example: 'Cranston' }),
+  q: z.string().max(100).optional().openapi({
+    description: 'Search by title, director, or actor (ILIKE %q%). Max 100 chars.',
+    example: 'Cranston',
+  }),
   type: z.enum(['movie', 'series']).optional().openapi({ description: 'Filter by title type.' }),
   year: z.coerce
     .number()
@@ -239,8 +238,8 @@ const detailRoute = createRoute({
   tags: [Tags.MOVIES],
   summary: 'Get a title by id',
   description:
-    "Returns full details including up to 10 cast members. For series, includes `seasonsCount`, `episodesCount`, and `endYear` (null for ongoing). When called with a valid Bearer token, `isFavorite` reflects the caller's state; without a token it is always `false`.",
-  security: [{ BearerAuth: [] }],
+    "Returns full details including up to 10 cast members. For series, includes `seasonsCount`, `episodesCount`, and `endYear` (null for ongoing). When called with a valid auth cookie, `isFavorite` reflects the caller's state; without one it is always `false`.",
+  security: [{ cookieAuth: [] }],
   request: {
     params: z.object({ id: z.coerce.number().int().positive().openapi({ example: 889 }) }),
   },

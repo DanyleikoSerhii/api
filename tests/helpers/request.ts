@@ -11,7 +11,7 @@ type RequestOptions = {
 export async function request(
   path: string,
   options: RequestOptions = {},
-): Promise<{ status: number; body: unknown }> {
+): Promise<{ status: number; body: unknown; cookies: Record<string, string> }> {
   const { method = 'GET', headers = {}, body } = options;
 
   const init: RequestInit = {
@@ -34,5 +34,20 @@ export async function request(
     responseBody = await res.text();
   }
 
-  return { status: res.status, body: responseBody };
+  const cookies: Record<string, string> = {};
+  for (const sc of res.headers.getSetCookie()) {
+    const pair = sc.split(';', 1)[0];
+    const eq = pair.indexOf('=');
+    if (eq > 0) {
+      cookies[pair.slice(0, eq).trim()] = pair.slice(eq + 1);
+    }
+  }
+
+  return { status: res.status, body: responseBody, cookies };
+}
+
+// Build a Cookie request header carrying the auth token, mirroring the cookie
+// the API sets on register/login.
+export function authCookie(token: string): { Cookie: string } {
+  return { Cookie: `token=${token}` };
 }

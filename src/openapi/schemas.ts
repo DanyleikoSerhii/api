@@ -31,13 +31,12 @@ export const userSchema = z
 
 export const authResponseSchema = z
   .object({
-    token: z.string().openapi({
-      example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-      description: 'JWT access token. TTL 24h.',
-    }),
     user: userSchema,
   })
-  .openapi('AuthResponse');
+  .openapi('AuthResponse', {
+    description:
+      'The JWT is delivered in an httpOnly `token` cookie (Set-Cookie), not in this body.',
+  });
 
 export const credentialsSchema = z
   .object({
@@ -199,7 +198,7 @@ export const titleDetailSchema = z
     isFavorite: z.boolean().openapi({
       example: false,
       description:
-        "true when the request carries a valid Bearer token and the title is in the user's favorites.",
+        "true when the request carries a valid auth cookie and the title is in the user's favorites.",
     }),
   })
   .openapi('TitleDetail');

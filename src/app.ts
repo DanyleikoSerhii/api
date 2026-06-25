@@ -21,7 +21,7 @@ export function createApp() {
     },
   });
 
-  app.use('*', cors({ origin: env.ALLOWED_ORIGIN }));
+  app.use('*', cors({ origin: env.ALLOWED_ORIGIN, credentials: true }));
 
   const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
   app.use('*', async (c, next) => {

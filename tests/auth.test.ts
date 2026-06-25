@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { truncateAll } from './helpers/db.js';
-import { request } from './helpers/request.js';
+import { request, authCookie } from './helpers/request.js';
 import { hashPassword, verifyPassword } from '../src/lib/password.js';
 import { signToken, verifyToken } from '../src/lib/jwt.js';
 import { sign } from 'hono/jwt';
@@ -28,15 +28,17 @@ describe('jwt utils', () => {
 });
 
 describe('POST /api/auth/register', () => {
-  it('returns 201 with token and user', async () => {
-    const { status, body } = await request('/api/auth/register', {
+  it('returns 201 with user and sets auth cookie', async () => {
+    const { status, body, cookies } = await request('/api/auth/register', {
       method: 'POST',
       body: { email: 'newuser@example.com', password: 'secret123' },
     });
     expect(status).toBe(201);
     const b = body as Record<string, unknown>;
-    expect(typeof b.token).toBe('string');
+    expect(b.token).toBeUndefined();
     expect((b.user as Record<string, unknown>).email).toBe('newuser@example.com');
+    expect(typeof cookies.token).toBe('string');
+    expect(cookies.token.length).toBeGreaterThan(0);
   });
 
   it('returns 409 on duplicate email', async () => {
@@ -69,13 +71,15 @@ describe('POST /api/auth/login', () => {
     });
   });
 
-  it('returns 200 with token on valid credentials', async () => {
-    const { status, body } = await request('/api/auth/login', {
+  it('returns 200 and sets auth cookie on valid credentials', async () => {
+    const { status, body, cookies } = await request('/api/auth/login', {
       method: 'POST',
       body: { email: 'login@example.com', password: 'secret123' },
     });
     expect(status).toBe(200);
-    expect(typeof (body as Record<string, unknown>).token).toBe('string');
+    expect((body as Record<string, unknown>).token).toBeUndefined();
+    expect(typeof cookies.token).toBe('string');
+    expect(cookies.token.length).toBeGreaterThan(0);
   });
 
   it('returns 401 on wrong password', async () => {
@@ -96,47 +100,61 @@ describe('POST /api/auth/login', () => {
   });
 });
 
+describe('POST /api/auth/logout', () => {
+  it('returns 204 and clears the auth cookie', async () => {
+    const { cookies } = await request('/api/auth/register', {
+      method: 'POST',
+      body: { email: 'logout@example.com', password: 'secret123' },
+    });
+    const { status, cookies: cleared } = await request('/api/auth/logout', {
+      method: 'POST',
+      headers: authCookie(cookies.token),
+    });
+    expect(status).toBe(204);
+    // deleteCookie emits a token cookie with an empty value to overwrite it.
+    expect(cleared.token).toBe('');
+  });
+
+  it('returns 204 even without a cookie (idempotent)', async () => {
+    const { status } = await request('/api/auth/logout', { method: 'POST' });
+    expect(status).toBe(204);
+  });
+});
+
 describe('GET /api/auth/me', () => {
   let token: string;
 
   beforeEach(async () => {
-    const { body } = await request('/api/auth/register', {
+    const { cookies } = await request('/api/auth/register', {
       method: 'POST',
       body: { email: 'me@example.com', password: 'secret123' },
     });
-    token = (body as Record<string, string>).token;
+    token = cookies.token;
   });
 
-  it('returns 200 with user data when authenticated', async () => {
+  it('returns 200 with user data when authenticated via cookie', async () => {
     const { status, body } = await request('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
     expect((body as Record<string, unknown>).email).toBe('me@example.com');
   });
 
-  it('returns 401 without token', async () => {
+  it('returns 401 without cookie', async () => {
     const { status } = await request('/api/auth/me');
     expect(status).toBe(401);
   });
 
-  it('returns 401 with invalid token', async () => {
+  it('returns 401 with invalid cookie', async () => {
     const { status } = await request('/api/auth/me', {
-      headers: { Authorization: 'Bearer invalid.token.here' },
+      headers: authCookie('invalid.token.here'),
     });
     expect(status).toBe(401);
   });
 
-  it('returns 401 when Authorization scheme is not Bearer', async () => {
+  it('ignores a Bearer header (cookie-only auth)', async () => {
     const { status } = await request('/api/auth/me', {
-      headers: { Authorization: token },
-    });
-    expect(status).toBe(401);
-  });
-
-  it('returns 401 with an empty Bearer token', async () => {
-    const { status } = await request('/api/auth/me', {
-      headers: { Authorization: 'Bearer ' },
+      headers: { Authorization: `Bearer ${token}` },
     });
     expect(status).toBe(401);
   });
@@ -148,7 +166,7 @@ describe('GET /api/auth/me', () => {
       'a-different-secret-at-least-32-chars-long',
     );
     const { status } = await request('/api/auth/me', {
-      headers: { Authorization: `Bearer ${forged}` },
+      headers: authCookie(forged),
     });
     expect(status).toBe(401);
   });
@@ -160,18 +178,18 @@ describe('GET /api/auth/me', () => {
       process.env.JWT_SECRET!,
     );
     const { status } = await request('/api/auth/me', {
-      headers: { Authorization: `Bearer ${expired}` },
+      headers: authCookie(expired),
     });
     expect(status).toBe(401);
   });
 });
 
 async function registerUser(email: string): Promise<string> {
-  const { body } = await request('/api/auth/register', {
+  const { cookies } = await request('/api/auth/register', {
     method: 'POST',
     body: { email, password: 'secret123' },
   });
-  return (body as Record<string, string>).token;
+  return cookies.token;
 }
 
 const PNG =
@@ -181,7 +199,7 @@ describe('GET /api/auth/me profile fields', () => {
   it('returns profile fields as null for a fresh account', async () => {
     const token = await registerUser('fresh@example.com');
     const { status, body } = await request('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
@@ -205,7 +223,7 @@ describe('PATCH /api/auth/me', () => {
     const token = await registerUser('profile@example.com');
     const { status, body } = await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { nickname: 'Ada_Lovelace', firstName: 'Ada', lastName: 'Lovelace', avatar: PNG },
     });
     expect(status).toBe(200);
@@ -216,7 +234,7 @@ describe('PATCH /api/auth/me', () => {
     expect(b.avatar).toBe(PNG);
 
     const { body: me } = await request('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
     });
     expect((me as Record<string, unknown>).nickname).toBe('Ada_Lovelace');
   });
@@ -225,12 +243,12 @@ describe('PATCH /api/auth/me', () => {
     const token = await registerUser('clear@example.com');
     await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { firstName: 'Temp' },
     });
     const { body } = await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { firstName: null },
     });
     expect((body as Record<string, unknown>).firstName).toBeNull();
@@ -241,12 +259,12 @@ describe('PATCH /api/auth/me', () => {
     const tokenB = await registerUser('nickb@example.com');
     await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: authCookie(tokenA),
       body: { nickname: 'TakenName' },
     });
     const { status, body } = await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${tokenB}` },
+      headers: authCookie(tokenB),
       body: { nickname: 'takenname' },
     });
     expect(status).toBe(409);
@@ -257,12 +275,12 @@ describe('PATCH /api/auth/me', () => {
     const token = await registerUser('own@example.com');
     await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { nickname: 'MyOwnNick' },
     });
     const { status } = await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { nickname: 'MyOwnNick', firstName: 'X' },
     });
     expect(status).toBe(200);
@@ -272,7 +290,7 @@ describe('PATCH /api/auth/me', () => {
     const token = await registerUser('badavatar@example.com');
     const { status } = await request('/api/auth/me', {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { avatar: 'not-a-data-uri' },
     });
     expect(status).toBe(400);
@@ -292,7 +310,7 @@ describe('POST /api/auth/change-password', () => {
     const token = await registerUser('cpwrong@example.com');
     const { status } = await request('/api/auth/change-password', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { currentPassword: 'wrongpassword', newPassword: 'newsecret123' },
     });
     expect(status).toBe(401);
@@ -303,7 +321,7 @@ describe('POST /api/auth/change-password', () => {
     const token = await registerUser(email);
     const { status } = await request('/api/auth/change-password', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { currentPassword: 'secret123', newPassword: 'newsecret123' },
     });
     expect(status).toBe(200);
@@ -325,7 +343,7 @@ describe('POST /api/auth/change-password', () => {
     const token = await registerUser('cpshort@example.com');
     const { status } = await request('/api/auth/change-password', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authCookie(token),
       body: { currentPassword: 'secret123', newPassword: 'short' },
     });
     expect(status).toBe(400);

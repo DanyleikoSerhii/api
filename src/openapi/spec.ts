@@ -1,15 +1,17 @@
 import { swaggerUI } from '@hono/swagger-ui';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import { env } from '../env.js';
+import { getSystemUserToken } from '../lib/systemUser.js';
+import { setAuthCookie, AUTH_COOKIE } from '../lib/cookies.js';
 import { Tags } from './schemas.js';
 
 export function mountOpenAPI(app: OpenAPIHono) {
-  app.openAPIRegistry.registerComponent('securitySchemes', 'BearerAuth', {
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'JWT',
+  app.openAPIRegistry.registerComponent('securitySchemes', 'cookieAuth', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: AUTH_COOKIE,
     description:
-      'HS256 JWT (TTL 24 h). Obtain via `POST /api/auth/register` or `POST /api/auth/login`, then click **Authorize** above.',
+      'HS256 JWT (TTL 24 h) in an httpOnly cookie, set by `POST /api/auth/register` or `POST /api/auth/login`.',
   });
 
   app.doc('/api/openapi.json', {
@@ -25,7 +27,7 @@ export function mountOpenAPI(app: OpenAPIHono) {
         'Selected titles are enriched with trailers, posters, and backdrops from TMDB.',
         '',
         '## Auth',
-        'JWT Bearer (HS256, 24 h TTL). Register or log in to receive a token, then use **Authorize** above.',
+        'JWT in an httpOnly cookie (HS256, 24 h TTL). `/api/auth/register` and `/api/auth/login` set it; `/api/auth/logout` clears it. In this UI a system-user cookie is set automatically, so protected endpoints work out of the box.',
         '',
         '## Errors',
         'Every non-2xx response uses the unified `ErrorResponse` envelope:',
@@ -72,11 +74,17 @@ export function mountOpenAPI(app: OpenAPIHono) {
     ],
   });
 
-  app.get(
-    '/api/docs',
-    swaggerUI({
+  // Dynamic handler: mint a fresh system-user token per request and drop it into
+  // the auth cookie for this origin. `withCredentials` makes Swagger UI's "Try it
+  // out" fetches send that cookie, so protected endpoints work out of the box.
+  // Per-request signing avoids a cookie that expires once the process has been
+  // running longer than the JWT TTL.
+  app.get('/api/docs', async (c) => {
+    const token = await getSystemUserToken();
+    setAuthCookie(c, token);
+    return swaggerUI({
       url: '/api/openapi.json',
-      persistAuthorization: true,
-    }),
-  );
+      withCredentials: true,
+    })(c, async () => {});
+  });
 }

@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { verifyToken } from '../lib/jwt.js';
+import { getAuthToken } from '../lib/cookies.js';
 import { env } from '../env.js';
 
 type OptionalAuthVariables = {
@@ -10,8 +11,7 @@ export const optionalAuth: MiddlewareHandler<{ Variables: OptionalAuthVariables 
   c,
   next,
 ) => {
-  const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const token = getAuthToken(c);
   if (token) {
     try {
       const payload = await verifyToken(token, env.JWT_SECRET);

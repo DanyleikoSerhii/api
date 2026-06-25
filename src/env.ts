@@ -4,6 +4,7 @@ import { z } from 'zod';
 config();
 
 const schema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1),
   DATABASE_URL_TEST: z.string().min(1).optional(),
   JWT_SECRET: z.string().min(32),

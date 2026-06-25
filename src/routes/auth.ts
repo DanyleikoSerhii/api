@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword, dummyVerifyPassword } from '../lib/passwo
 import { signToken } from '../lib/jwt.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
+import { setAuthCookie, clearAuthCookie } from '../lib/cookies.js';
 import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
 import { env } from '../env.js';
 import {
@@ -45,7 +46,7 @@ const registerRoute = createRoute({
   tags: [Tags.AUTH],
   summary: 'Register a new account',
   description:
-    'Creates a user with a bcrypt-hashed password and returns a JWT access token (TTL 24h). Rate-limited (10 req/min per IP).',
+    'Creates a user with a bcrypt-hashed password and sets a JWT access token in an httpOnly cookie (TTL 24h). Rate-limited (10 req/min per IP).',
   request: {
     body: { content: { 'application/json': { schema: credentialsSchema } }, required: true },
   },
@@ -66,7 +67,8 @@ const loginRoute = createRoute({
   path: '/api/auth/login',
   tags: [Tags.AUTH],
   summary: 'Log in with email and password',
-  description: 'Returns a JWT access token (TTL 24h) on success. Rate-limited (10 req/min per IP).',
+  description:
+    'Sets a JWT access token in an httpOnly cookie (TTL 24h) on success. Rate-limited (10 req/min per IP).',
   request: {
     body: { content: { 'application/json': { schema: credentialsSchema } }, required: true },
   },
@@ -81,6 +83,18 @@ const loginRoute = createRoute({
   },
 });
 
+const logoutRoute = createRoute({
+  operationId: 'logout',
+  method: 'post',
+  path: '/api/auth/logout',
+  tags: [Tags.AUTH],
+  summary: 'Log out',
+  description: 'Clears the auth cookie. Idempotent — succeeds whether or not a cookie was present.',
+  responses: {
+    204: { description: 'Auth cookie cleared' },
+  },
+});
+
 const meRoute = createRoute({
   operationId: 'getMe',
   method: 'get',
@@ -88,9 +102,12 @@ const meRoute = createRoute({
   tags: [Tags.AUTH],
   summary: 'Get current user',
   description: "Returns the authenticated user's profile (id, email, nickname, names, avatar).",
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   responses: {
-    200: { content: { 'application/json': { schema: profileSchema } }, description: 'Current user' },
+    200: {
+      content: { 'application/json': { schema: profileSchema } },
+      description: 'Current user',
+    },
     401: { ...jsonError, description: 'Missing or invalid token' },
   },
 });
@@ -103,7 +120,7 @@ const updateProfileRoute = createRoute({
   summary: 'Update the current profile',
   description:
     'Partial update of nickname, first/last name, and avatar. Omit a field to leave it unchanged; send null to clear it. Nickname is unique (case-insensitive).',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: {
     body: { content: { 'application/json': { schema: updateProfileSchema } }, required: true },
   },
@@ -126,7 +143,7 @@ const changePasswordRoute = createRoute({
   summary: 'Change password',
   description:
     'Verifies the current password and sets a new one. Existing tokens remain valid (no revocation).',
-  security: [{ BearerAuth: [] }],
+  security: [{ cookieAuth: [] }],
   request: {
     body: { content: { 'application/json': { schema: changePasswordSchema } }, required: true },
   },
@@ -164,7 +181,8 @@ authRouter.openapi(registerRoute, async (c) => {
   }
 
   const token = await signToken(user.id, user.email, env.JWT_SECRET);
-  return c.json({ token, user: { id: user.id, email: user.email } }, 201);
+  setAuthCookie(c, token);
+  return c.json({ user: { id: user.id, email: user.email } }, 201);
 });
 
 authRouter.openapi(loginRoute, async (c) => {
@@ -183,7 +201,13 @@ authRouter.openapi(loginRoute, async (c) => {
   }
 
   const token = await signToken(user.id, user.email, env.JWT_SECRET);
-  return c.json({ token, user: { id: user.id, email: user.email } }, 200);
+  setAuthCookie(c, token);
+  return c.json({ user: { id: user.id, email: user.email } }, 200);
+});
+
+authRouter.openapi(logoutRoute, (c) => {
+  clearAuthCookie(c);
+  return c.body(null, 204);
 });
 
 authRouter.use('/api/auth/me', requireAuth);
@@ -231,11 +255,7 @@ authRouter.openapi(updateProfileRoute, async (c) => {
   }
 
   try {
-    const [updated] = await db
-      .update(users)
-      .set(updates)
-      .where(eq(users.id, auth.sub))
-      .returning();
+    const [updated] = await db.update(users).set(updates).where(eq(users.id, auth.sub)).returning();
     if (!updated) {
       return errorResponse(c, ErrorCode.UNAUTHORIZED, 'User not found') as never;
     }
