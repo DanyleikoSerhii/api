@@ -1,6 +1,5 @@
 import { swaggerUI } from '@hono/swagger-ui';
 import type { OpenAPIHono } from '@hono/zod-openapi';
-import { env } from '../env.js';
 import { getSystemUserToken } from '../lib/systemUser.js';
 import { setAuthCookie, AUTH_COOKIE } from '../lib/cookies.js';
 import { Tags } from './schemas.js';
@@ -19,34 +18,10 @@ export function mountOpenAPI(app: OpenAPIHono) {
     info: {
       title: 'Movie Explorer API',
       version: '1.0.0',
-      description: [
-        'REST API for browsing movies and TV series with personal favorites and profile management.',
-        '',
-        '## Data',
-        'Seeded from [IMDb Non-Commercial Datasets](https://developer.imdb.com/non-commercial-datasets/) — ~1 700 titles with rating ≥ 7.5 and ≥ 50 000 votes.',
-        'Selected titles are enriched with trailers, posters, and backdrops from TMDB.',
-        '',
-        '## Auth',
-        'JWT in an httpOnly cookie (HS256, 24 h TTL). `/api/auth/register` and `/api/auth/login` set it; `/api/auth/logout` clears it. In this UI a system-user cookie is set automatically, so protected endpoints work out of the box.',
-        '',
-        '## Errors',
-        'Every non-2xx response uses the unified `ErrorResponse` envelope:',
-        '```json',
-        '{ "error": { "code": "NOT_FOUND", "message": "Title not found" } }',
-        '```',
-        'Possible `code` values: `VALIDATION_ERROR` · `UNAUTHORIZED` · `NOT_FOUND` · `CONFLICT` · `INTERNAL_ERROR`.',
-        '',
-        '## Rate limiting',
-        'Auth endpoints (`/register`, `/login`) are limited to **10 requests / minute per IP**.',
-      ].join('\n'),
-      contact: { name: 'Serhii Danyleiko', email: 'sergeydanyleuko@gmail.com' },
-      license: { name: 'Educational use only' },
     },
-    externalDocs: {
-      description: 'IMDb Non-Commercial Datasets',
-      url: 'https://developer.imdb.com/non-commercial-datasets/',
-    },
-    servers: [{ url: `http://localhost:${env.PORT}`, description: 'Local development' }],
+    // Relative URL: Swagger UI targets whatever origin serves the docs, so
+    // "Try it out" stays same-origin in dev (any host/port) and in production.
+    servers: [{ url: '/' }],
     tags: [
       {
         name: Tags.AUTH,
@@ -75,8 +50,10 @@ export function mountOpenAPI(app: OpenAPIHono) {
   });
 
   // Dynamic handler: mint a fresh system-user token per request and drop it into
-  // the auth cookie for this origin. `withCredentials` makes Swagger UI's "Try it
-  // out" fetches send that cookie, so protected endpoints work out of the box.
+  // the auth cookie for this origin. Because the docs are served by the API
+  // itself, "Try it out" requests are same-origin and send the cookie by default
+  // — no `withCredentials` (which would force a credentialed CORS request and
+  // fail whenever the docs origin isn't the configured ALLOWED_ORIGIN).
   // Per-request signing avoids a cookie that expires once the process has been
   // running longer than the JWT TTL.
   //
@@ -90,9 +67,6 @@ export function mountOpenAPI(app: OpenAPIHono) {
     } catch (err) {
       console.error('docs: failed to provision system-user auth cookie', err);
     }
-    return swaggerUI({
-      url: '/api/openapi.json',
-      withCredentials: true,
-    })(c, async () => {});
+    return swaggerUI({ url: '/api/openapi.json' })(c, async () => {});
   });
 }

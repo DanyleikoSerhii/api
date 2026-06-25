@@ -13,7 +13,7 @@ describe('GET /api/docs when the system user cannot be provisioned', () => {
   it('still serves Swagger UI (200) without an auth cookie', async () => {
     const { status, body, cookies } = await request('/api/docs');
     expect(status).toBe(200);
-    expect(body as string).toContain('withCredentials: true');
+    expect(body as string).toContain('/api/openapi.json');
     expect(cookies.token).toBeUndefined();
   });
 });

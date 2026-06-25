@@ -5,10 +5,10 @@ import { SYSTEM_USER_EMAIL } from '../src/lib/systemUser.js';
 import { env } from '../src/env.js';
 
 describe('GET /api/docs', () => {
-  it('serves Swagger UI HTML configured to send credentials', async () => {
+  it('serves Swagger UI HTML wired to the OpenAPI document', async () => {
     const { status, body } = await request('/api/docs');
     expect(status).toBe(200);
-    expect(body as string).toContain('withCredentials: true');
+    expect(body as string).toContain('/api/openapi.json');
   });
 
   it('sets a valid system-user auth cookie that authenticates /api/auth/me', async () => {
