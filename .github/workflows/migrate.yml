@@ -1,0 +1,50 @@
+name: Migrate prod DB
+
+# The Vercel build can't run migrations — the managed Postgres (Nile) doesn't
+# grant the build the DDL permissions it needs, so `db:migrate` was dropped from
+# the build (see commit 09526c7). That let the prod schema drift behind the code
+# (e.g. missing titles.backdrop_url -> 42703 on every /api/movies query). This
+# workflow closes that gap: it applies pending Drizzle migrations to prod from a
+# context that *does* have DDL rights, using PROD_DATABASE_URL from secrets.
+#
+# Trigger: every push to main that changes migrations or the schema, plus manual
+# dispatch. Migrations here are additive (nullable columns), so running in
+# parallel with Vercel's auto-deploy is safe; the migrator is idempotent and
+# only applies what's pending (tracked in __drizzle_migrations).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'drizzle/migrations/**'
+      - 'src/db/schema.ts'
+  workflow_dispatch:
+
+# Don't let two migration runs race on the same database.
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply Drizzle migrations
+    runs-on: ubuntu-latest
+    env:
+      # The standalone migrator (src/db/migrate.ts) reads DATABASE_URL (or
+      # POSTGRES_URL) and enables TLS automatically for non-local hosts.
+      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run migrations
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL secret not set — skipping migration." >&2
+            exit 1
+          fi
+          pnpm db:migrate
