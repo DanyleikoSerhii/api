@@ -54,6 +54,24 @@ describe('POST /api/auth/register', () => {
     expect((body as Record<string, Record<string, string>>).error.code).toBe('CONFLICT');
   });
 
+  it('handles concurrent duplicate registration: one 201, one 409 (no 500)', async () => {
+    const payload = {
+      method: 'POST',
+      body: { email: 'race@example.com', password: 'secret123' },
+    } as const;
+
+    const [a, b] = await Promise.all([
+      request('/api/auth/register', payload),
+      request('/api/auth/register', payload),
+    ]);
+
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const conflict = a.status === 409 ? a : b;
+    expect((conflict.body as Record<string, Record<string, string>>).error.code).toBe('CONFLICT');
+  });
+
   it('returns 400 on invalid body', async () => {
     const { status } = await request('/api/auth/register', {
       method: 'POST',
