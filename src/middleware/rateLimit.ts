@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import type { IncomingMessage } from 'node:http';
+import { ErrorCode, errorResponse } from '../lib/errors.js';
 
 type WindowEntry = { count: number; windowStart: number };
 
@@ -42,10 +43,7 @@ export const rateLimit: MiddlewareHandler = async (c, next) => {
 
   entry.count++;
   if (entry.count > MAX_REQUESTS) {
-    return c.json(
-      { error: { code: 'RATE_LIMITED', message: 'Too many requests, please try again later.' } },
-      429,
-    );
+    return errorResponse(c, ErrorCode.RATE_LIMITED, 'Too many requests, please try again later.');
   }
 
   return next();

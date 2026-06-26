@@ -1,8 +1,9 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import type { MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { mountRoutes } from './routes/index.js';
 import { mountOpenAPI } from './openapi/spec.js';
-import { ErrorCode, errorResponse } from './lib/errors.js';
+import { AppError, ErrorCode, errorResponse } from './lib/errors.js';
 import { pool } from './db/connection.js';
 import { env } from './env.js';
 
@@ -24,16 +25,14 @@ export function createApp() {
   app.use('*', cors({ origin: env.ALLOWED_ORIGIN, credentials: true }));
 
   const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-  app.use('*', async (c, next) => {
+  const bodySizeGuard: MiddlewareHandler = async (c, next) => {
     const len = c.req.header('content-length');
     if (len !== undefined && Number(len) > MAX_BODY_BYTES) {
-      return c.json(
-        { error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body too large.' } },
-        413,
-      );
+      return errorResponse(c, ErrorCode.PAYLOAD_TOO_LARGE, 'Request body too large.');
     }
     return next();
-  });
+  };
+  app.use('*', bodySizeGuard);
 
   app.use('*', async (c, next) => {
     const start = Date.now();
@@ -54,15 +53,19 @@ export function createApp() {
   mountRoutes(app);
   mountOpenAPI(app);
 
+  // Unmatched routes get the same envelope as everything else, not Hono's
+  // default plain-text "404 Not Found".
+  app.notFound((c) => errorResponse(c, ErrorCode.NOT_FOUND, 'Route not found'));
+
   app.onError((err, c) => {
+    // AppError carries a client-safe code/message/details — surface it as-is.
+    if (err instanceof AppError) {
+      return errorResponse(c, err.code, err.message, err.details);
+    }
+    // Anything else is unexpected: log the full error server-side, but never
+    // leak its message/cause/stack to the client.
     console.error(err);
-    return errorResponse(
-      c,
-      ErrorCode.INTERNAL_ERROR,
-      err instanceof Error
-        ? `${err.message} || CAUSE: ${err.cause instanceof Error ? `${err.cause.name}: ${err.cause.message}` : String(err.cause)}`
-        : 'An unexpected error occurred',
-    );
+    return errorResponse(c, ErrorCode.INTERNAL_ERROR, 'An unexpected error occurred');
   });
 
   return app;
