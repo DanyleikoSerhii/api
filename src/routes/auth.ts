@@ -165,19 +165,18 @@ authRouter.use('/api/auth/login', rateLimit);
 authRouter.openapi(registerRoute, async (c) => {
   const { email, password } = c.req.valid('json');
 
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existing.length > 0) {
-    return errorResponse(c, ErrorCode.CONFLICT, 'Email already registered') as never;
-  }
-
   const passwordHash = await hashPassword(password);
+  // Rely on the unique constraint on email as the single source of truth:
+  // onConflictDoNothing makes concurrent duplicate registrations return 409
+  // (no row -> conflict) instead of bubbling a 23505 up as a 500.
   const [user] = await db
     .insert(users)
     .values({ email, passwordHash })
+    .onConflictDoNothing({ target: users.email })
     .returning({ id: users.id, email: users.email });
 
   if (!user) {
-    return errorResponse(c, ErrorCode.INTERNAL_ERROR, 'Failed to create user') as never;
+    return errorResponse(c, ErrorCode.CONFLICT, 'Email already registered') as never;
   }
 
   const token = await signToken(user.id, user.email, env.JWT_SECRET);
