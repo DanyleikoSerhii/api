@@ -1,10 +1,10 @@
-import { handle } from 'hono/vercel';
+import { getRequestListener } from '@hono/node-server';
 import { createApp } from '../src/app.js';
 
-// Use Hono's native Vercel adapter (a Web fetch handler) so Vercel's runtime
-// serializes the Response itself. The previous @hono/node-server
-// getRequestListener piped the Web Response into a Node res manually, which
-// crashed on Vercel for any non-trivial response body (FUNCTION_INVOCATION_FAILED).
+// This Vercel function runs on the Node.js runtime (pg/bcrypt need it), so the
+// entry must be a Node (req, res) listener. getRequestListener produces exactly
+// that. (hono/vercel's handle is a Web fetch handler for the Edge runtime and
+// is wrong here — Vercel would invoke it with (req, res) and it would crash.)
 const app = createApp();
 
-export default handle(app);
+export default getRequestListener(app.fetch);

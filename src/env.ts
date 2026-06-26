@@ -16,7 +16,20 @@ const schema = z.object({
 
 // Nile / Vercel Postgres expose the connection string as POSTGRES_URL.
 // Accept it as a fallback so the same code works locally and in deployment.
-export const env = schema.parse({
+const parsed = schema.safeParse({
   ...process.env,
   DATABASE_URL: process.env['DATABASE_URL'] ?? process.env['POSTGRES_URL'],
 });
+
+if (!parsed.success) {
+  // Surface a readable reason in the logs. Otherwise a missing env var throws a
+  // raw ZodError at import time, which on serverless (Vercel) shows up only as
+  // an opaque FUNCTION_INVOCATION_FAILED with no usable log line.
+  const reason = parsed.error.issues
+    .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+    .join('; ');
+  console.error(`env: invalid environment configuration — ${reason}`);
+  throw new Error(`Invalid environment configuration: ${reason}`);
+}
+
+export const env = parsed.data;
