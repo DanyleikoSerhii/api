@@ -1,6 +1,6 @@
 {
   "framework": null,
   "installCommand": "npx --yes pnpm@11.5.2 install --frozen-lockfile",
-  "buildCommand": "tsc && mkdir -p public && printf 'API is running. Docs: /api/docs' > public/index.html",
+  "buildCommand": "tsc && pnpm db:migrate && mkdir -p public && printf 'API is running. Docs: /api/docs' > public/index.html",
   "outputDirectory": "public"
 }
