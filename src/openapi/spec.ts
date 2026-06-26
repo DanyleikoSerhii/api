@@ -1,7 +1,6 @@
 import { swaggerUI } from '@hono/swagger-ui';
 import type { OpenAPIHono } from '@hono/zod-openapi';
-import { getSystemUserToken } from '../lib/systemUser.js';
-import { setAuthCookie, AUTH_COOKIE } from '../lib/cookies.js';
+import { AUTH_COOKIE } from '../lib/cookies.js';
 import { Tags } from './schemas.js';
 
 export function mountOpenAPI(app: OpenAPIHono) {
@@ -49,24 +48,7 @@ export function mountOpenAPI(app: OpenAPIHono) {
     ],
   });
 
-  // Dynamic handler: mint a fresh system-user token per request and drop it into
-  // the auth cookie for this origin. Because the docs are served by the API
-  // itself, "Try it out" requests are same-origin and send the cookie by default
-  // — no `withCredentials` (which would force a credentialed CORS request and
-  // fail whenever the docs origin isn't the configured ALLOWED_ORIGIN).
-  // Per-request signing avoids a cookie that expires once the process has been
-  // running longer than the JWT TTL.
-  //
-  // The auto-auth is best-effort: the docs are a static asset and must not 500
-  // just because the DB is unreachable. If minting the token fails, serve the UI
-  // without the cookie — the user can still authenticate manually.
-  app.get('/api/docs', async (c) => {
-    try {
-      const token = await getSystemUserToken();
-      setAuthCookie(c, token);
-    } catch (err) {
-      console.error('docs: failed to provision system-user auth cookie', err);
-    }
-    return swaggerUI({ url: '/api/openapi.json' })(c, async () => {});
-  });
+  // Serve the Swagger UI as a static asset — no DB access. "Try it out" stays
+  // same-origin (cookie auth works once you log in via POST /api/auth/login).
+  app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
 }
