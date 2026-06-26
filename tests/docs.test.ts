@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { request, authCookie } from './helpers/request.js';
-import { verifyToken } from '../src/lib/jwt.js';
-import { SYSTEM_USER_EMAIL } from '../src/lib/systemUser.js';
-import { env } from '../src/env.js';
+import { request } from './helpers/request.js';
 
 describe('GET /api/docs', () => {
   it('serves Swagger UI HTML wired to the OpenAPI document', async () => {
@@ -11,19 +8,13 @@ describe('GET /api/docs', () => {
     expect(body as string).toContain('/api/openapi.json');
   });
 
-  it('sets a valid system-user auth cookie that authenticates /api/auth/me', async () => {
-    const { cookies } = await request('/api/docs');
-    const token = cookies.token;
-    expect(typeof token).toBe('string');
-    expect(token.length).toBeGreaterThan(0);
-
-    const payload = await verifyToken(token, env.JWT_SECRET);
-    expect(payload.email).toBe(SYSTEM_USER_EMAIL);
-
-    const { status, body: me } = await request('/api/auth/me', {
-      headers: authCookie(token),
-    });
+  it('is a pure static asset — no DB access, no auth cookie', async () => {
+    // The handler used to mint a system-user JWT per request (a DB round-trip),
+    // which could crash the serverless function on the managed prod DB. It now
+    // serves the Swagger UI statically; "Try it out" works once you log in via
+    // POST /api/auth/login (same-origin cookie). So no cookie is set here.
+    const { status, cookies } = await request('/api/docs');
     expect(status).toBe(200);
-    expect((me as Record<string, unknown>).email).toBe(SYSTEM_USER_EMAIL);
+    expect(cookies.token).toBeUndefined();
   });
 });
