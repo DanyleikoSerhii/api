@@ -12,7 +12,15 @@ export const errorResponseSchema = z
   .object({
     error: z.object({
       code: z
-        .enum(['VALIDATION_ERROR', 'UNAUTHORIZED', 'NOT_FOUND', 'CONFLICT', 'INTERNAL_ERROR'])
+        .enum([
+          'VALIDATION_ERROR',
+          'UNAUTHORIZED',
+          'NOT_FOUND',
+          'CONFLICT',
+          'PAYLOAD_TOO_LARGE',
+          'RATE_LIMITED',
+          'INTERNAL_ERROR',
+        ])
         .openapi({ example: 'NOT_FOUND' }),
       message: z.string().openapi({ example: 'Title not found' }),
       details: z.unknown().optional(),
