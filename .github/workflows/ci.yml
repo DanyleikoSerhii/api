@@ -49,3 +49,27 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+
+  notify:
+    name: Telegram notification
+    runs-on: ubuntu-latest
+    needs: [check, test]
+    if: always()
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS: ${{ (needs.check.result == 'success' && needs.test.result == 'success') && '✅ success' || '❌ failure' }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — skipping notification."
+            exit 0
+          fi
+          text=$(printf 'CI %s\nrepo: %s\nbranch: %s\ncommit: %s\nrun: %s/%s/actions/runs/%s' \
+            "$STATUS" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "${GITHUB_SHA:0:7}" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            -d "disable_web_page_preview=true" > /dev/null
