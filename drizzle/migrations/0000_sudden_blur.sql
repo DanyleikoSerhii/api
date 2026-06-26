@@ -70,4 +70,21 @@ CREATE INDEX "title_genres_genre_id_idx" ON "title_genres" USING btree ("genre_i
 CREATE INDEX "titles_year_idx" ON "titles" USING btree ("year");--> statement-breakpoint
 CREATE INDEX "titles_type_idx" ON "titles" USING btree ("type");--> statement-breakpoint
 CREATE INDEX "titles_rating_idx" ON "titles" USING btree ("rating");--> statement-breakpoint
-CREATE INDEX "titles_title_gin_idx" ON "titles" USING gin ("title" gin_trgm_ops);
+DO $$
+BEGIN
+	-- Best-effort: enable pg_trgm (backs the gin_trgm_ops index). On managed
+	-- Postgres (e.g. Nile) where the role can't CREATE EXTENSION, skip silently;
+	-- ILIKE search still works without the GIN acceleration.
+	BEGIN
+		CREATE EXTENSION IF NOT EXISTS pg_trgm;
+	EXCEPTION WHEN OTHERS THEN
+		RAISE NOTICE 'pg_trgm not enabled (%); skipping trigram index', SQLERRM;
+	END;
+
+	-- Create the trigram index only when the opclass is available, so a missing
+	-- extension can never abort the migration.
+	IF EXISTS (SELECT 1 FROM pg_opclass WHERE opcname = 'gin_trgm_ops') THEN
+		CREATE INDEX IF NOT EXISTS "titles_title_gin_idx" ON "titles" USING gin ("title" gin_trgm_ops);
+	END IF;
+END
+$$;
