@@ -31,7 +31,7 @@ On Windows where `docker` isn't on PATH, the Docker Desktop CLI lives at `C:\Pro
 
 ## Architecture
 
-Hono REST API (`@hono/zod-openapi`) over Drizzle ORM + node-postgres, deployed as a single Vercel function. The whole app is assembled by `createApp()` in `src/app.ts`; `api/[[...route]].ts` is the Vercel entry (wraps `createApp().fetch`) and `src/index.ts` is the local Node server. Both call the same `createApp()`.
+Hono REST API (`@hono/zod-openapi`) over Drizzle ORM + node-postgres, deployed as a single Vercel function. The whole app is assembled by `createApp()` in `src/app.ts`; `api/index.ts` is the Vercel entry (wraps `createApp().fetch` via `getRequestListener`) and `src/index.ts` is the local Node server. Both call the same `createApp()`. Vercel's filesystem catch-all only matched one path segment, so `vercel.json` adds `rewrites: [{ source: '/api/:path*', destination: '/api' }]` to funnel every nested `/api/...` request into that single function (otherwise `/api/movies/{id}`, `/api/people/{id}`, etc. return Vercel's platform 404 before reaching Hono).
 
 **Request pipeline (`src/app.ts`):** CORS (with `credentials: true`, origin from `ALLOWED_ORIGIN`) → 1 MB body-size guard → request logger → routes → OpenAPI docs → `onError` (returns the unified error envelope). `GET /health` pings the DB and returns 503 `{ status: 'degraded' }` when it's down.
 
