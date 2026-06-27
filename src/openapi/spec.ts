@@ -45,6 +45,10 @@ export function mountOpenAPI(app: OpenAPIHono) {
         name: Tags.PEOPLE,
         description: 'Cast members and directors with their filmography.',
       },
+      {
+        name: Tags.NOTIFICATIONS,
+        description: 'Developer utilities for testing notification integrations.',
+      },
     ],
   });
 

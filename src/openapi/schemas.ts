@@ -6,6 +6,7 @@ export const Tags = {
   GENRES: 'Genres',
   FAVORITES: 'Favorites',
   PEOPLE: 'People',
+  NOTIFICATIONS: 'Notifications',
 } as const;
 
 export const errorResponseSchema = z
@@ -135,7 +136,7 @@ export const titleSummarySchema = z
     posterUrl: z
       .string()
       .nullable()
-      .openapi({ example: 'https://placehold.co/300x450?text=The%20Matrix' }),
+      .openapi({ example: 'https://placehold.co/300x450?text=The%20Matrix', format: 'uri' }),
     genres: z.array(z.string()).openapi({ example: ['Action', 'Sci-Fi'] }),
     numVotes: z
       .number()
@@ -183,14 +184,15 @@ export const titleDetailSchema = z
     }),
     rating: z.number().openapi({ example: 9.5 }),
     numVotes: z.number().int().openapi({ example: 2000000, description: 'IMDb numVotes.' }),
-    posterUrl: z.string().nullable(),
+    posterUrl: z.string().nullable().openapi({ format: 'uri' }),
     backdropUrl: z
       .string()
       .nullable()
-      .openapi({ description: 'Wide backdrop image (TMDB). null if unknown.' }),
+      .openapi({ description: 'Wide backdrop image (TMDB). null if unknown.', format: 'uri' }),
     trailerUrl: z.string().nullable().openapi({
       example: 'https://www.youtube.com/watch?v=HhesaQXLuRY',
       description: 'YouTube trailer URL (TMDB). null if none.',
+      format: 'uri',
     }),
     genres: z.array(z.string()).openapi({ example: ['Crime', 'Drama', 'Thriller'] }),
     seasonsCount: z
@@ -223,8 +225,60 @@ export const genresResponseSchema = z
 export const addFavoriteResponseSchema = z
   .object({
     id: z.number().int().openapi({ example: 889 }),
-    addedAt: z
-      .string()
-      .openapi({ example: '2026-06-10T12:00:00.000Z', description: 'ISO 8601 timestamp (UTC).' }),
+    addedAt: z.string().openapi({
+      example: '2026-06-10T12:00:00.000Z',
+      description: 'ISO 8601 timestamp (UTC).',
+      format: 'date-time',
+    }),
   })
   .openapi('AddFavoriteResponse');
+
+// Moved here from movies.ts so type generators emit a named AutocompleteItem type.
+export const autocompleteItemSchema = z
+  .object({
+    id: z.number().int().openapi({ example: 889 }),
+    title: z.string().openapi({ example: 'Breaking Bad' }),
+    year: z.number().int().openapi({ example: 2008 }),
+    type: z.enum(['movie', 'series']).openapi({ example: 'series' }),
+  })
+  .openapi('AutocompleteItem');
+
+export const autocompleteResponseSchema = z
+  .object({
+    data: z.array(autocompleteItemSchema),
+  })
+  .openapi('AutocompleteResponse');
+
+// Moved here from favorites.ts so type generators emit named BulkCheck* types.
+export const bulkCheckBodySchema = z
+  .object({
+    ids: z
+      .array(z.coerce.number().int().positive())
+      .min(1)
+      .max(100)
+      .openapi({
+        example: [889, 1234],
+        description: 'List of movie/series ids to check (max 100).',
+      }),
+  })
+  .openapi('BulkCheckBody');
+
+export const bulkCheckItemSchema = z
+  .object({
+    id: z.number().int().positive().openapi({ example: 889 }),
+    isFavorite: z.boolean().openapi({ example: true }),
+  })
+  .openapi('BulkCheckItem');
+
+export const bulkCheckResponseSchema = z
+  .object({
+    data: z.array(bulkCheckItemSchema),
+  })
+  .openapi('BulkCheckResponse');
+
+export const telegramTestResponseSchema = z
+  .object({
+    ok: z.boolean().openapi({ example: true }),
+    message: z.string().openapi({ example: 'Test message sent to Telegram.' }),
+  })
+  .openapi('TelegramTestResponse');

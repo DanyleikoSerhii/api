@@ -12,6 +12,9 @@ const schema = z.object({
   ALLOWED_ORIGIN: z.string().min(1).default('http://localhost:3000'),
   // Only required to run `pnpm db:enrich`; the app and tests run without it.
   TMDB_ACCESS_TOKEN: z.string().optional(),
+  // Optional: Telegram bot integration. When set, POST /api/notifications/telegram/test works.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 // Nile / Vercel Postgres expose the connection string as POSTGRES_URL.

@@ -24,6 +24,7 @@ import {
   titleListSchema,
   titleDetailSchema,
   similarTitlesSchema,
+  autocompleteResponseSchema,
   errorResponseSchema,
 } from '../openapi/schemas.js';
 
@@ -183,19 +184,6 @@ const popularRoute = createRoute({
     400: { ...jsonError, description: 'Validation error' },
   },
 });
-
-const autocompleteResponseSchema = z
-  .object({
-    data: z.array(
-      z.object({
-        id: z.number().int().openapi({ example: 889 }),
-        title: z.string().openapi({ example: 'Breaking Bad' }),
-        year: z.number().int().openapi({ example: 2008 }),
-        type: z.enum(['movie', 'series']).openapi({ example: 'series' }),
-      }),
-    ),
-  })
-  .openapi('AutocompleteResponse');
 
 const autocompleteRoute = createRoute({
   operationId: 'autocompleteMovies',

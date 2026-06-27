@@ -4,6 +4,7 @@ import { moviesRouter } from './movies.js';
 import { genresRouter } from './genres.js';
 import { favoritesRouter } from './favorites.js';
 import { peopleRouter } from './people.js';
+import { notificationsRouter } from './notifications.js';
 
 export function mountRoutes(app: OpenAPIHono) {
   app.route('/', authRouter);
@@ -11,4 +12,5 @@ export function mountRoutes(app: OpenAPIHono) {
   app.route('/', genresRouter);
   app.route('/', favoritesRouter);
   app.route('/', peopleRouter);
+  app.route('/', notificationsRouter);
 }

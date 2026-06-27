@@ -9,6 +9,8 @@ import {
   Tags,
   titleListSchema,
   addFavoriteResponseSchema,
+  bulkCheckBodySchema,
+  bulkCheckResponseSchema,
   errorResponseSchema,
 } from '../openapi/schemas.js';
 
@@ -49,23 +51,6 @@ const idParamSchema = z.object({
     .int()
     .positive()
     .openapi({ example: 889, description: 'Movie or series id.' }),
-});
-
-const bulkCheckBodySchema = z.object({
-  ids: z
-    .array(z.coerce.number().int().positive())
-    .min(1)
-    .max(100)
-    .openapi({ example: [889, 1234], description: 'List of movie/series ids to check (max 100).' }),
-});
-
-const bulkCheckResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.number().int().positive().openapi({ example: 889 }),
-      isFavorite: z.boolean().openapi({ example: true }),
-    }),
-  ),
 });
 
 const listRoute = createRoute({
