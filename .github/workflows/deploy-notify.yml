@@ -21,6 +21,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
           STATE: ${{ github.event.deployment_status.state }}
           DEPLOY_URL: ${{ github.event.deployment_status.target_url }}
         run: |
@@ -33,8 +34,13 @@ jobs:
           else
             icon="❌"
           fi
-          text=$(printf '%s Vercel deploy %s\nrepo: %s\ncommit: %s\n%s' \
-            "$icon" "$STATE" "$GITHUB_REPOSITORY" "${GITHUB_SHA:0:7}" "$DEPLOY_URL")
+          commit_title=$(curl -fsS \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" \
+            | jq -r '.commit.message | split("\n")[0] | .[0:80]')
+          text=$(printf '%s Vercel deploy %s\nrepo: %s\ncommit: %s %s\n%s' \
+            "$icon" "$STATE" "$GITHUB_REPOSITORY" "${GITHUB_SHA:0:7}" "$commit_title" "$DEPLOY_URL")
           curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=${text}" \
