@@ -1,0 +1,41 @@
+name: Deploy notify
+
+# Triggered by Vercel's GitHub integration whenever a deployment changes state.
+# Only fires for Production in terminal states (success / failure / error).
+# Sends a Telegram message; skips silently if the secrets are not set.
+
+on:
+  deployment_status:
+
+jobs:
+  notify:
+    name: Telegram — Vercel deploy
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.deployment.environment == 'Production' &&
+      (github.event.deployment_status.state == 'success' ||
+       github.event.deployment_status.state == 'failure' ||
+       github.event.deployment_status.state == 'error')
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATE: ${{ github.event.deployment_status.state }}
+          DEPLOY_URL: ${{ github.event.deployment_status.target_url }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "TELEGRAM secrets not set — skipping."
+            exit 0
+          fi
+          if [ "$STATE" = "success" ]; then
+            icon="✅"
+          else
+            icon="❌"
+          fi
+          text=$(printf '%s Vercel deploy %s\nrepo: %s\ncommit: %s\n%s' \
+            "$icon" "$STATE" "$GITHUB_REPOSITORY" "${GITHUB_SHA:0:7}" "$DEPLOY_URL")
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            -d "disable_web_page_preview=true" > /dev/null
