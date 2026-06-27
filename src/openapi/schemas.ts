@@ -100,7 +100,10 @@ export const updateProfileSchema = z
     avatar: avatarSchema.nullable(),
   })
   .partial()
-  .openapi('UpdateProfile');
+  .openapi('UpdateProfile', {
+    description: 'All fields are optional. Omit to leave unchanged; send null to clear.',
+    example: {},
+  });
 
 export const changePasswordSchema = z
   .object({

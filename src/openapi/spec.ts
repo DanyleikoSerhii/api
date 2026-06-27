@@ -50,5 +50,5 @@ export function mountOpenAPI(app: OpenAPIHono) {
 
   // Serve the Swagger UI as a static asset — no DB access. "Try it out" stays
   // same-origin (cookie auth works once you log in via POST /api/auth/login).
-  app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
+  app.get('/api/docs', swaggerUI({ url: '/api/openapi.json', deepLinking: true }));
 }
