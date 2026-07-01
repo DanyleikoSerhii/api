@@ -21,6 +21,7 @@ pnpm db:generate         # generate a migration from schema changes
 pnpm db:migrate          # apply migrations (src/db/migrate.ts -> drizzle/migrations)
 pnpm db:seed             # seed from IMDb TSVs in seeds/ (src/seed/run.ts; see README for required files)
 pnpm db:enrich           # backfill TMDB data (poster/backdrop/trailer); needs TMDB_ACCESS_TOKEN
+pnpm db:sync             # converge the PROD schema via idempotent DDL (src/db/sync.ts + drizzle/prod-sync.sql)
 ```
 
 `db:enrich` (`src/enrich/run.ts` + `src/lib/tmdb.ts`) is resumable — by default it only fills titles with a null `tmdbId`; pass `--force` to re-process everything. It's optional: the app and tests run without `TMDB_ACCESS_TOKEN`.
@@ -36,11 +37,12 @@ Hono REST API (`@hono/zod-openapi`) over Drizzle ORM + node-postgres, deployed a
 **Request pipeline (`src/app.ts`):** CORS (with `credentials: true`, origin from `ALLOWED_ORIGIN`) → 1 MB body-size guard → request logger → routes → OpenAPI docs → `onError` (returns the unified error envelope). `GET /health` pings the DB and returns 503 `{ status: 'degraded' }` when it's down.
 
 **Routes (`src/routes/`)** — each is its own `OpenAPIHono` instance, mounted at `/` in `src/routes/index.ts` (`mountRoutes`):
-- `auth.ts` — register / login / me (JWT)
-- `movies.ts` — catalog list (search + filters + sort + pagination), detail (`/api/movies/{id}`), similar (`/api/movies/{id}/similar`). NOTE: the underlying table is still `titles` (movies **and** series); only the API surface is named `movies`.
+- `auth.ts` — register / login / logout / me (GET profile, PATCH profile update) / change-password (JWT cookie)
+- `movies.ts` — catalog list (search + filters + sort + pagination), `/api/movies/popular`, `/api/movies/autocomplete` (typeahead), detail (`/api/movies/{id}`), similar (`/api/movies/{id}/similar`). NOTE: the underlying table is still `titles` (movies **and** series); only the API surface is named `movies`.
 - `genres.ts`, `favorites.ts` (auth-required), `people.ts` (`/api/people/{id}` + filmography)
+- `notifications.ts` — `POST /api/notifications/telegram/test` (auth-required) sends a test message via the Telegram Bot API; returns a 500 envelope when `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` aren't set.
 
-**Data model (`src/db/schema.ts`):** one `titles` table with `type` = `'movie' | 'series'` (not separate tables). `genres`/`titleGenres` and `people`/`titleCast` are many-to-many join tables; `favorites` is `(userId, titleId)`. `rating` is `numeric(3,1)` — Postgres returns it as a **string**, so always wrap reads in `Number()`.
+**Data model (`src/db/schema.ts`):** one `titles` table with `type` = `'movie' | 'series'` (not separate tables). `genres`/`titleGenres` and `people`/`titleCast` are many-to-many join tables; `favorites` is `(userId, titleId)`. `users` has optional profile fields (`nickname` — unique case-insensitively via a `lower(nickname)` index — `firstName`, `lastName`, `avatar`). `rating` is `numeric(3,1)` — Postgres returns it as a **string**, so always wrap reads in `Number()`.
 
 **OpenAPI:** every route is declared with `createRoute(...)` then registered via `router.openapi(route, handler)`. Tags live in `src/openapi/schemas.ts` (`Tags`), the doc/Swagger UI is wired in `src/openapi/spec.ts` (`GET /api/openapi.json`, `GET /api/docs`). Response/shared Zod schemas also live in `schemas.ts`.
 
@@ -52,13 +54,21 @@ Hono REST API (`@hono/zod-openapi`) over Drizzle ORM + node-postgres, deployed a
 
 **Shared list query:** `src/lib/listQuery.ts` holds `buildPagination` and `titleSearchCondition` (OR of title / director / actor-name ILIKE), reused by both the movies list and the favorites list.
 
+## CI & deployment (`.github/workflows/`)
+
+- `ci.yml` — `pnpm check` + `pnpm test` on every PR and push to main. Tests run against a service Postgres on port **5432** (not 5433); only `DATABASE_URL_TEST` and `JWT_SECRET` are set — the vitest setup handles DB creation/migration itself.
+- **Prod migrations do NOT run in the Vercel build** — the managed prod DB (Nile) doesn't grant the build DDL rights, and its role can't create the `drizzle` bookkeeping schema, so the journaled migrator (`db:migrate`) can't run against prod at all. Instead `migrate.yml` runs `pnpm db:sync` (secret `PROD_DATABASE_URL`) on pushes to main that touch `drizzle/migrations/**`, `drizzle/prod-sync.sql`, or `src/db/schema.ts`, plus manual dispatch.
+- `db:sync` applies `drizzle/prod-sync.sql` **one statement at a time** so DDL that Nile rejects (`CREATE EXTENSION`, `DO` blocks, functional index expressions) fails-and-skips without rolling back the rest; it then verifies the required `titles` columns exist. Because of the naive `;` split, statements in `prod-sync.sql` must never embed a `;` (no `DO $$ ... $$`).
+- Telegram notifications (optional, skip silently when secrets unset): `ci.yml` messages on CI failure; `deploy-notify.yml` messages on Vercel Production deploy success/failure via the `deployment_status` event. Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+
 ## Conventions & gotchas
 
 - **ESM + `verbatimModuleSyntax`:** all relative imports end in `.js` (even for `.ts` files). Type-only imports must use `import { type X }` / `import type` or `tsc` fails (e.g. `type AnyColumn` from `drizzle-orm`).
 - **Error envelope:** never hand-roll error JSON. Use `errorResponse(c, ErrorCode.X, message, details?)` from `src/lib/errors.ts` — it maps each `ErrorCode` to its status via `statusMap` and emits `{ error: { code, message, details? } }`. Codes: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `NOT_FOUND` (404), `CONFLICT` (409), `PAYLOAD_TOO_LARGE` (413), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500); keep the OpenAPI enum in `schemas.ts` in sync. Every `OpenAPIHono` is constructed with `{ defaultHook }` so Zod failures return the same shape (400 `VALIDATION_ERROR`). In `src/app.ts`, `app.notFound` returns the envelope (`NOT_FOUND`) for unmatched routes, and `app.onError` surfaces a thrown `AppError` as its envelope but collapses any other error to a generic 500 (logged server-side, never leaking the message/cause to the client).
-- **Static-before-param route registration:** when a static path collides with a param route (e.g. `/api/favorites/check` vs `/api/favorites/{titleId}`), register the static route's `.openapi(...)` **first** so the literal segment isn't swallowed by the `{id}` param (which would coerce to `NaN` → 400). Same applies to any new `/api/movies/<word>` route vs `/api/movies/{id}`.
-- **`pg_trgm` is not in the migration.** The `gin_trgm_ops` index on `titles.title` needs the `pg_trgm` extension, but `CREATE EXTENSION` was removed from the migration for Nile/Vercel-Postgres compatibility. It's enabled instead by the test global setup and by `docker/init-test-db.sql` for local Postgres. If you add a fresh environment, ensure the extension exists.
-- **DB connection string:** `src/env.ts` validates env with Zod and accepts `POSTGRES_URL` as a fallback for `DATABASE_URL` (Nile/Vercel expose the former). `JWT_SECRET` must be ≥32 chars. Tests use `DATABASE_URL_TEST` (optional in non-test runs); `TMDB_ACCESS_TOKEN` is optional and only needed for `db:enrich`.
+- **Schema changes must be mirrored in `drizzle/prod-sync.sql`.** Prod is converged via `db:sync`, not the journaled migrator (see CI & deployment) — a new `drizzle/migrations/` file alone never reaches prod. Add the equivalent guarded, additive DDL (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) to `prod-sync.sql` as well.
+- **Static-before-param route registration:** when a static path collides with a param route (e.g. `/api/favorites/check` vs `/api/favorites/{id}`, or `/api/movies/popular` and `/api/movies/autocomplete` vs `/api/movies/{id}`), register the static route's `.openapi(...)` **first** so the literal segment isn't swallowed by the `{id}` param (which would coerce to `NaN` → 400).
+- **`pg_trgm` is not in the migration.** The `gin_trgm_ops` index on `titles.title` needs the `pg_trgm` extension, but `CREATE EXTENSION` was removed from the base migration for Nile/Vercel-Postgres compatibility (migration `0003` retries it best-effort in a `DO` block and creates the index only when the opclass exists). It's enabled instead by the test global setup and by `docker/init-test-db.sql` for local Postgres. If you add a fresh environment, ensure the extension exists.
+- **DB connection string:** `src/env.ts` validates env with Zod and accepts `POSTGRES_URL` as a fallback for `DATABASE_URL` (Nile/Vercel expose the former). `JWT_SECRET` must be ≥32 chars. Tests use `DATABASE_URL_TEST` (optional in non-test runs); `TMDB_ACCESS_TOKEN` (for `db:enrich`) and `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (for the Telegram test endpoint) are optional. A validation failure logs a readable reason before throwing — on Vercel a raw ZodError at import time surfaces only as an opaque `FUNCTION_INVOCATION_FAILED`.
 - **LIKE searches** must escape user input via `escapeLikePattern` (`src/lib/sql.ts`) and use `ILIKE ... ESCAPE '\\'`. Sortable columns are always a fixed whitelist (Zod enum), never a raw client-supplied column name.
 - **Lint scope:** `eslint .` type-checks against `tsconfig.eslint.json` (separate from `tsconfig.json`); new top-level dirs with `.ts` files must be added to its `include` or eslint errors with a parser project error.
 - ESLint enforces `type` over `interface` (`consistent-type-definitions`) and bans `any`.
