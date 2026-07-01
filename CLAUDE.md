@@ -38,7 +38,7 @@ Hono REST API (`@hono/zod-openapi`) over Drizzle ORM + node-postgres, deployed a
 
 **Routes (`src/routes/`)** — each is its own `OpenAPIHono` instance, mounted at `/` in `src/routes/index.ts` (`mountRoutes`):
 - `auth.ts` — register / login / logout / me (GET profile, PATCH profile update) / change-password (JWT cookie)
-- `movies.ts` — catalog list (search + filters + sort + pagination), `/api/movies/popular`, `/api/movies/autocomplete` (typeahead), detail (`/api/movies/{id}`), similar (`/api/movies/{id}/similar`). NOTE: the underlying table is still `titles` (movies **and** series); only the API surface is named `movies`.
+- `movies.ts` — catalog list (search + filters + sort + pagination), `/api/movies/popular`, `/api/movies/autocomplete` (typeahead), `/api/movies/banners` (high-res TMDB backdrops for a hero carousel, filtered to `backdropUrl IS NOT NULL`), detail (`/api/movies/{id}`), similar (`/api/movies/{id}/similar`). NOTE: the underlying table is still `titles` (movies **and** series); only the API surface is named `movies`.
 - `genres.ts`, `favorites.ts` (auth-required), `people.ts` (`/api/people/{id}` + filmography)
 - `notifications.ts` — `POST /api/notifications/telegram/test` (auth-required) sends a test message via the Telegram Bot API; returns a 500 envelope when `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` aren't set.
 

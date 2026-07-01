@@ -216,6 +216,27 @@ export const titleDetailSchema = z
   })
   .openapi('TitleDetail');
 
+export const bannerItemSchema = z
+  .object({
+    id: z.number().int().openapi({ example: 889 }),
+    type: z.enum(['movie', 'series']).openapi({ example: 'series' }),
+    title: z.string().openapi({ example: 'Breaking Bad' }),
+    year: z.number().int().openapi({ example: 2008 }),
+    rating: z.number().openapi({ example: 9.5 }),
+    backdropUrl: z.string().openapi({
+      example: 'https://image.tmdb.org/t/p/w1280/bb.jpg',
+      description: 'Wide high-resolution backdrop image (TMDB, 1280px wide). Always present.',
+      format: 'uri',
+    }),
+  })
+  .openapi('BannerItem');
+
+export const bannersResponseSchema = z
+  .object({
+    data: z.array(bannerItemSchema),
+  })
+  .openapi('BannersResponse');
+
 export const genresResponseSchema = z
   .object({
     data: z.array(z.string()).openapi({ example: ['Action', 'Crime', 'Drama', 'Thriller'] }),

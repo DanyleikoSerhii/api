@@ -323,6 +323,46 @@ describe('GET /api/movies/popular', () => {
   });
 });
 
+describe('GET /api/movies/banners', () => {
+  it('only returns titles with a backdropUrl', async () => {
+    const { status, body } = await request('/api/movies/banners');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(typeof item.backdropUrl).toBe('string');
+      expect((item.backdropUrl as string).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('includes the seeded Breaking Bad banner', async () => {
+    const { body } = await request('/api/movies/banners');
+    const data = dataOf(body);
+    expect(data.some((t) => t.title === 'Breaking Bad')).toBe(true);
+  });
+
+  it('respects type=movie filter (no seeded movie has a backdrop)', async () => {
+    const { status, body } = await request('/api/movies/banners?type=movie');
+    expect(status).toBe(200);
+    expect(dataOf(body)).toHaveLength(0);
+  });
+
+  it('respects type=series filter', async () => {
+    const { status, body } = await request('/api/movies/banners?type=series');
+    expect(status).toBe(200);
+    const data = dataOf(body);
+    expect(data.length).toBeGreaterThan(0);
+    for (const item of data) {
+      expect(item.type).toBe('series');
+    }
+  });
+
+  it('rejects limit above 20 with 400', async () => {
+    const { status } = await request('/api/movies/banners?limit=21');
+    expect(status).toBe(400);
+  });
+});
+
 describe('GET /api/movies/autocomplete', () => {
   it('returns matching titles for q=Break', async () => {
     const { status, body } = await request('/api/movies/autocomplete?q=Break');
