@@ -16,6 +16,20 @@ describe('unified error envelope', () => {
     expect(typeof (body as ErrorBody).error.message).toBe('string');
   });
 
+  it('returns a VALIDATION_ERROR message summarizing every invalid field, not a generic string', async () => {
+    const { status, body } = await request('/api/auth/register', {
+      method: 'POST',
+      body: { email: 'not-an-email' },
+    });
+    expect(status).toBe(400);
+    const err = (body as ErrorBody).error;
+    expect(err.code).toBe('VALIDATION_ERROR');
+    expect(err.message).toBe(
+      'email: Invalid email address; password: Invalid input: expected string, received undefined',
+    );
+    expect(Array.isArray(err.details)).toBe(true);
+  });
+
   it('returns a RATE_LIMITED envelope once the auth limit is exceeded', async () => {
     const attempt = () =>
       request('/api/auth/login', {

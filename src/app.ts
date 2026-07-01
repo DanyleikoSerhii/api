@@ -1,26 +1,14 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import type { MiddlewareHandler } from 'hono';
+import type { Env, MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { mountRoutes } from './routes/index.js';
 import { mountOpenAPI } from './openapi/spec.js';
-import { AppError, ErrorCode, errorResponse } from './lib/errors.js';
+import { AppError, ErrorCode, errorResponse, defaultHook } from './lib/errors.js';
 import { pool } from './db/connection.js';
 import { env } from './env.js';
 
 export function createApp() {
-  const app = new OpenAPIHono({
-    defaultHook: (result, c) => {
-      if (!result.success) {
-        return errorResponse(
-          c,
-          ErrorCode.VALIDATION_ERROR,
-          'Validation error',
-          result.error.issues,
-        );
-      }
-      return undefined;
-    },
-  });
+  const app = new OpenAPIHono<Env>({ defaultHook });
 
   app.use('*', cors({ origin: env.ALLOWED_ORIGIN, credentials: true }));
 
