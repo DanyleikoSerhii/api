@@ -7,6 +7,7 @@ import {
   desc,
   count,
   inArray,
+  isNotNull,
   exists,
   sql,
   SQL,
@@ -25,6 +26,7 @@ import {
   titleDetailSchema,
   similarTitlesSchema,
   autocompleteResponseSchema,
+  bannersResponseSchema,
   errorResponseSchema,
 } from '../openapi/schemas.js';
 
@@ -214,6 +216,37 @@ const autocompleteRoute = createRoute({
     200: {
       content: { 'application/json': { schema: autocompleteResponseSchema } },
       description: 'Matching titles',
+    },
+    400: { ...jsonError, description: 'Validation error' },
+  },
+});
+
+const bannersRoute = createRoute({
+  operationId: 'listMovieBanners',
+  method: 'get',
+  path: '/api/movies/banners',
+  tags: [Tags.MOVIES],
+  summary: 'High-quality banner images for a hero carousel',
+  description:
+    'Top titles ranked by IMDb rating then vote count (both desc), restricted to titles that ' +
+    'have a wide TMDB backdrop image (1280px). Only titles enriched via `db:enrich` are eligible ' +
+    '— run it if this returns fewer results than expected. Optionally filter by type. Max limit 20.',
+  request: {
+    query: z.object({
+      type: z.enum(['movie', 'series']).optional().openapi({ description: 'Filter by type.' }),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .default(8)
+        .openapi({ example: 8, description: 'Max 20.' }),
+    }),
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: bannersResponseSchema } },
+      description: 'Banner-eligible titles',
     },
     400: { ...jsonError, description: 'Validation error' },
   },
@@ -429,6 +462,32 @@ moviesRouter.openapi(autocompleteRoute, async (c) => {
     title: t.title,
     year: t.year,
     type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+  }));
+
+  return c.json({ data }, 200);
+});
+
+moviesRouter.openapi(bannersRoute, async (c) => {
+  const { type, limit } = c.req.valid('query');
+
+  const conditions: SQL[] = [isNotNull(titles.backdropUrl)];
+  if (type) conditions.push(eq(titles.type, type));
+
+  const rows = await db
+    .select()
+    .from(titles)
+    .where(and(...conditions))
+    .orderBy(desc(titles.rating), desc(titles.numVotes), desc(titles.id))
+    .limit(limit);
+
+  const data = rows.map((t) => ({
+    id: t.id,
+    type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+    title: t.title,
+    year: t.year,
+    rating: Number(t.rating),
+    // Guaranteed by the isNotNull(titles.backdropUrl) filter above.
+    backdropUrl: t.backdropUrl as string,
   }));
 
   return c.json({ data }, 200);
