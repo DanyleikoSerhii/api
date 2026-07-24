@@ -29,6 +29,8 @@ seed/
 *.swp
 *.swo
 
+seeds
+
 # OS
 .DS_Store
 Thumbs.db
