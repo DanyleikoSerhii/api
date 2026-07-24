@@ -250,7 +250,7 @@ describe('GET /api/movies/:id/similar', () => {
 });
 
 describe('GET /api/movies/:id trailer & backdrop', () => {
-  it('derives trailerUrl from the stored trailer key and returns backdropUrl', async () => {
+  it('derives an embeddable trailerUrl from the stored trailer key and returns backdropUrl', async () => {
     // Breaking Bad is seeded with a trailerKey and backdropUrl.
     const listRes = await request('/api/movies?q=Breaking&type=series&limit=1');
     const id = dataOf(listRes.body)[0].id as number;
@@ -258,7 +258,7 @@ describe('GET /api/movies/:id trailer & backdrop', () => {
     const { status, body } = await request(`/api/movies/${id}`);
     expect(status).toBe(200);
     const b = body as Record<string, unknown>;
-    expect(b.trailerUrl).toBe('https://www.youtube.com/watch?v=HhesaQXLuRY');
+    expect(b.trailerUrl).toBe('https://www.youtube.com/embed/HhesaQXLuRY');
     expect(b.backdropUrl).toBe('https://image.tmdb.org/t/p/w1280/bb.jpg');
   });
 

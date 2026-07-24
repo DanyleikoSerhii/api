@@ -3,7 +3,7 @@ import {
   pickTrailerKey,
   posterUrlFromPath,
   backdropUrlFromPath,
-  trailerWatchUrl,
+  trailerEmbedUrl,
   mediaTypeFor,
 } from '../src/lib/tmdb.js';
 
@@ -42,9 +42,9 @@ describe('url builders', () => {
     expect(backdropUrlFromPath(undefined)).toBeNull();
   });
 
-  it('builds a YouTube watch URL from a key', () => {
-    expect(trailerWatchUrl('xyz')).toBe('https://www.youtube.com/watch?v=xyz');
-    expect(trailerWatchUrl(null)).toBeNull();
+  it('builds an embeddable YouTube URL from a key', () => {
+    expect(trailerEmbedUrl('xyz')).toBe('https://www.youtube.com/embed/xyz');
+    expect(trailerEmbedUrl(null)).toBeNull();
   });
 });
 

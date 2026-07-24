@@ -51,8 +51,12 @@ export function backdropUrlFromPath(path: string | null | undefined): string | n
   return path ? `${IMAGE_BASE}/w1280${path}` : null;
 }
 
-export function trailerWatchUrl(key: string | null | undefined): string | null {
-  return key ? `https://www.youtube.com/watch?v=${key}` : null;
+/**
+ * Builds an embeddable YouTube player URL (`/embed/{key}`) — the `watch?v=`
+ * form refuses to load in an iframe, so clients get the embed form directly.
+ */
+export function trailerEmbedUrl(key: string | null | undefined): string | null {
+  return key ? `https://www.youtube.com/embed/${key}` : null;
 }
 
 // --- Network client (used only by the enrichment script) ------------------

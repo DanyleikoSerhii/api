@@ -19,7 +19,7 @@ import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
 import { escapeLikePattern } from '../lib/sql.js';
 import { buildPagination, titleSearchCondition } from '../lib/listQuery.js';
 import { optionalAuth } from '../middleware/optionalAuth.js';
-import { trailerWatchUrl } from '../lib/tmdb.js';
+import { trailerEmbedUrl } from '../lib/tmdb.js';
 import {
   Tags,
   titleListSchema,
@@ -544,7 +544,7 @@ moviesRouter.openapi(detailRoute, async (c) => {
       numVotes: title.numVotes,
       posterUrl: title.posterUrl ?? null,
       backdropUrl: title.backdropUrl ?? null,
-      trailerUrl: trailerWatchUrl(title.trailerKey),
+      trailerUrl: trailerEmbedUrl(title.trailerKey),
       genres: titleGenreRows.map((g) => g.name),
       seasonsCount: title.seasonsCount ?? null,
       episodesCount: title.episodesCount ?? null,

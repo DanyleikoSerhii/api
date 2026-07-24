@@ -190,8 +190,9 @@ export const titleDetailSchema = z
       .nullable()
       .openapi({ description: 'Wide backdrop image (TMDB). null if unknown.', format: 'uri' }),
     trailerUrl: z.string().nullable().openapi({
-      example: 'https://www.youtube.com/watch?v=HhesaQXLuRY',
-      description: 'YouTube trailer URL (TMDB). null if none.',
+      example: 'https://www.youtube.com/embed/HhesaQXLuRY',
+      description:
+        'Embeddable YouTube trailer URL (TMDB), ready to drop into an iframe src. null if none.',
       format: 'uri',
     }),
     genres: z.array(z.string()).openapi({ example: ['Crime', 'Drama', 'Thriller'] }),
