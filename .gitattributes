@@ -1,0 +1,5 @@
+# Prettier is configured with endOfLine: "lf". Without this, core.autocrlf=true
+# on Windows checks every file out with CRLF and `pnpm check` fails immediately,
+# while `pnpm fix` rewrites them back to LF — an endless loop that Linux CI never
+# sees. Force LF in the working tree on every platform instead.
+* text=auto eol=lf
