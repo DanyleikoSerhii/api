@@ -262,6 +262,12 @@ export const autocompleteItemSchema = z
     title: z.string().openapi({ example: 'Breaking Bad' }),
     year: z.number().int().openapi({ example: 2008 }),
     type: z.enum(['movie', 'series']).openapi({ example: 'series' }),
+    posterUrl: z.string().nullable().openapi({
+      example: 'https://image.tmdb.org/t/p/w92/ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg',
+      description:
+        'Small (w92) poster thumbnail, sized for a typeahead row — note the other endpoints return posterUrl at w500. null if unknown.',
+      format: 'uri',
+    }),
   })
   .openapi('AutocompleteItem');
 

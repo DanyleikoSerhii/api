@@ -52,6 +52,17 @@ export function backdropUrlFromPath(path: string | null | undefined): string | n
 }
 
 /**
+ * Shrinks a stored `w500` poster to TMDB's `w92` thumbnail for typeahead rows.
+ * Anything else — the placehold.co fallbacks, other TMDB sizes — comes back
+ * unchanged rather than being rewritten on a guess.
+ */
+export function posterThumbUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const w500Prefix = `${IMAGE_BASE}/w500/`;
+  return url.startsWith(w500Prefix) ? `${IMAGE_BASE}/w92/${url.slice(w500Prefix.length)}` : url;
+}
+
+/**
  * Builds an embeddable YouTube player URL (`/embed/{key}`) — the `watch?v=`
  * form refuses to load in an iframe, so clients get the embed form directly.
  */

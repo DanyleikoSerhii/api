@@ -134,7 +134,9 @@ async function seedTestData(db: ReturnType<typeof drizzle<typeof schema>>) {
         numVotes: 2000000,
         seasonsCount: 5,
         episodesCount: 62,
-        posterUrl: 'https://placehold.co/300x450?text=BreakingBad',
+        // TMDB-form poster (the enriched fixture) so the w92 thumbnail rewrite
+        // is covered end-to-end; the others keep placeholder URLs.
+        posterUrl: 'https://image.tmdb.org/t/p/w500/bb.jpg',
         backdropUrl: 'https://image.tmdb.org/t/p/w1280/bb.jpg',
         trailerKey: 'HhesaQXLuRY',
       },

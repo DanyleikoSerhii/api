@@ -19,7 +19,7 @@ import { errorResponse, ErrorCode, defaultHook } from '../lib/errors.js';
 import { escapeLikePattern } from '../lib/sql.js';
 import { buildPagination, titleSearchCondition } from '../lib/listQuery.js';
 import { optionalAuth } from '../middleware/optionalAuth.js';
-import { trailerEmbedUrl } from '../lib/tmdb.js';
+import { trailerEmbedUrl, posterThumbUrl } from '../lib/tmdb.js';
 import {
   Tags,
   titleListSchema,
@@ -451,7 +451,13 @@ moviesRouter.openapi(autocompleteRoute, async (c) => {
   const rankExpr = sql<number>`CASE WHEN ${titles.title} ILIKE ${prefixPat} ESCAPE '\\' THEN 0 ELSE 1 END`;
 
   const rows = await db
-    .select({ id: titles.id, title: titles.title, year: titles.year, type: titles.type })
+    .select({
+      id: titles.id,
+      title: titles.title,
+      year: titles.year,
+      type: titles.type,
+      posterUrl: titles.posterUrl,
+    })
     .from(titles)
     .where(and(...conditions))
     .orderBy(asc(rankExpr), desc(titles.rating), desc(titles.numVotes))
@@ -462,6 +468,7 @@ moviesRouter.openapi(autocompleteRoute, async (c) => {
     title: t.title,
     year: t.year,
     type: t.type === 'movie' ? ('movie' as const) : ('series' as const),
+    posterUrl: posterThumbUrl(t.posterUrl),
   }));
 
   return c.json({ data }, 200);
