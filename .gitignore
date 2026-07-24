@@ -20,6 +20,8 @@ logs/
 # seeds (keep placeholder)
 seeds/
 !seeds/.gitkeep
+# stray singular variant — multi-GB IMDb dumps must never be staged
+seed/
 
 # editor
 .vscode/
