@@ -4,6 +4,7 @@ import {
   posterUrlFromPath,
   backdropUrlFromPath,
   trailerEmbedUrl,
+  posterThumbUrl,
   mediaTypeFor,
 } from '../src/lib/tmdb.js';
 
@@ -45,6 +46,23 @@ describe('url builders', () => {
   it('builds an embeddable YouTube URL from a key', () => {
     expect(trailerEmbedUrl('xyz')).toBe('https://www.youtube.com/embed/xyz');
     expect(trailerEmbedUrl(null)).toBeNull();
+  });
+
+  it('shrinks a stored TMDB poster to the w92 thumbnail', () => {
+    expect(posterThumbUrl('https://image.tmdb.org/t/p/w500/abc.jpg')).toBe(
+      'https://image.tmdb.org/t/p/w92/abc.jpg',
+    );
+  });
+
+  it('passes non-TMDB posters through untouched', () => {
+    // 8 prod titles fall back to placehold.co — those must not be rewritten.
+    const placeholder = 'https://placehold.co/300x450?text=Twin%20Peaks';
+    expect(posterThumbUrl(placeholder)).toBe(placeholder);
+    // A TMDB URL at some other size is left alone rather than guessed at.
+    const w780 = 'https://image.tmdb.org/t/p/w780/abc.jpg';
+    expect(posterThumbUrl(w780)).toBe(w780);
+    expect(posterThumbUrl(null)).toBeNull();
+    expect(posterThumbUrl(undefined)).toBeNull();
   });
 });
 

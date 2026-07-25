@@ -374,7 +374,22 @@ describe('GET /api/movies/autocomplete', () => {
       expect(typeof item.title).toBe('string');
       expect(typeof item.year).toBe('number');
       expect(['movie', 'series']).toContain(item.type);
+      expect('posterUrl' in item).toBe(true);
     }
+  });
+
+  it('returns a small w92 poster for a TMDB-sourced title', async () => {
+    const { body } = await request('/api/movies/autocomplete?q=Breaking&type=series');
+    const item = dataOf(body).find((t) => t.title === 'Breaking Bad');
+    expect(item).toBeDefined();
+    // Stored as w500; autocomplete must hand back the lighter w92 variant.
+    expect(item?.posterUrl).toBe('https://image.tmdb.org/t/p/w92/bb.jpg');
+  });
+
+  it('leaves a non-TMDB placeholder poster untouched', async () => {
+    const { body } = await request('/api/movies/autocomplete?q=Wire&type=series');
+    const item = dataOf(body).find((t) => t.title === 'The Wire');
+    expect(item?.posterUrl).toBe('https://placehold.co/300x450?text=TheWire');
   });
 
   it('prefix matches rank before substring matches', async () => {
